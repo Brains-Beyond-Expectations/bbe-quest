@@ -41,7 +41,7 @@ Our goal is to provide:
 1. Run the talos-iso.sh script to create the ISO file.
 
 ```bash
-./talos-iso.sh
+bash ./talos-iso.sh
 ```
 
 2. Use balenaEtcher to flash the ISO file to a USB drive.
