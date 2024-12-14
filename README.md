@@ -4,15 +4,21 @@
 
 ## Welcome to BBE-Quest
 
-BBE-Quest (Big Brain Energy Quest) is your ultimate guide to building and automating a home lab Kubernetes (k8s) cluster. This project offers a fully guided and automated journey, taking the complexity out of the process and making it accessible even for those new to the world of home labs.
+BBE-Quest (Big Brain Energy Quest) is your ultimate guide to building and
+automating a home lab Kubernetes (k8s) cluster. This project offers a fully
+guided and automated journey, taking the complexity out of the process and
+making it accessible even for those new to the world of home labs.
 
 ### Project Objective
 
 Our goal is to provide:
 
-- **Streamlined Home Lab Automation**: Automate the setup and management of your Kubernetes cluster with minimal manual intervention.
-- **Guided Learning Journey**: Each step is designed to teach and empower you, turning complex tasks into achievable milestones.
-- **Collaborative Excellence**: Crafted by two passionate nerds who love to share knowledge and solve challenges together.
+- **Streamlined Home Lab Automation**: Automate the setup and management of your
+  Kubernetes cluster with minimal manual intervention.
+- **Guided Learning Journey**: Each step is designed to teach and empower you,
+  turning complex tasks into achievable milestones.
+- **Collaborative Excellence**: Crafted by two passionate nerds who love to
+  share knowledge and solve challenges together.
 
 ---
 
@@ -28,6 +34,7 @@ Our goal is to provide:
 
 - [Crane](https://github.com/google/go-containerregistry/blob/main/cmd/crane/README.md)
 - [balenaEtcher](https://www.balena.io/etcher/)
+- [talosctl](https://www.talos.dev/v1.8/learn-more/talosctl/)
 
 ## Usage on Intel NUC
 
