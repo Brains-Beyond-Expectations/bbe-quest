@@ -24,10 +24,6 @@ Our goal is to provide:
 
 ### Getting Started
 
-Check out our detailed [Setup Guide](./docs/setup.md) to begin your BBE-Quest today!
-
-We welcome contributions and suggestions. Let’s make this quest an adventure to remember!
-
 ## Requirements
 
 - [Crane](https://github.com/google/go-containerregistry/blob/main/cmd/crane/README.md)
