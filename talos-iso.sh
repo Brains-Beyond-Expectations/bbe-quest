@@ -1,5 +1,10 @@
 #!/bin/bash
 
+if ! crane version &>/dev/null; then
+    echo "crane is not installed. Please install it"
+    exit 1
+fi
+
 extensions=$(crane export ghcr.io/siderolabs/extensions:v1.8.0 | tar x -O image-digests | grep -E 'intel-ucode:|gvisor:|iscsi-tools')
 
 extension_args=$(echo "$extensions" | awk '{print "--system-extension-image " $1}' | tr '\n' ' ')
