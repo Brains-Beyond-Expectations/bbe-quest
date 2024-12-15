@@ -9,10 +9,8 @@ import (
 
 var rootCmd = &cobra.Command{
 	Use:   "bbe",
-	Short: "bbe - a simple CLI to transform and inspect strings",
-	Long: `bbe is a super fancy CLI (kidding)
-      
-   One can use bbe to modify or inspect strings straight from the terminal`,
+	Short: "a cli for managing your Talos k8s cluster",
+	Long:  `bbe is a cli for managing your Talos k8s cluster.`,
 	Run: func(cmd *cobra.Command, args []string) {
 
 	},
