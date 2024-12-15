@@ -22,7 +22,7 @@ jobs:
         uses: release-drafter/release-drafter@v6
         id: release-drafter
         with:
-          publish: ${{ !github.event.pull_request }}
+          publish: false
           config-name: release-drafter.yaml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

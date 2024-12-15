@@ -21,4 +21,10 @@ func Execute() {
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(0)
 	}
+
+	// No command was provided
+	if len(os.Args) == 1 {
+		rootCmd.Help()
+		os.Exit(0)
+	}
 }
