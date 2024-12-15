@@ -1,0 +1,68 @@
+name: Main
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  draft-release:
+    name: Draft release notes
+    runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ steps.release-drafter.outputs.resolved_version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Release Drafter
+        uses: release-drafter/release-drafter@v6
+        id: release-drafter
+        with:
+          publish: ${{ !github.event.pull_request }}
+          config-name: release-drafter.yaml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  releases-matrix:
+    name: Release Go Binary
+    needs: draft-release
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        goos: [linux, windows, darwin]
+        goarch: ["386", amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: wangyoucao577/go-release-action@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          goos: ${{ matrix.goos }}
+          goarch: ${{ matrix.goarch }}
+          goversion: "1.23"
+          project_path: "./cli"
+          binary_name: "bbe"
+          release_tag: ${{ needs.draft-release.outputs.release_tag }}
+          ldflags:
+            -X 'github.com/nicolajv/bbe-quest/constants.Version=v${{
+            needs.draft-release.outputs.release_tag }}'
+  publish-release:
+    name: Publish release
+    runs-on: ubuntu-latest
+    needs: releases-matrix
+    if: ${{ !github.event.pull_request }}
+    outputs:
+      release_tag: ${{ steps.release-drafter.outputs.resolved_version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Release Drafter
+        uses: release-drafter/release-drafter@v6
+        id: release-drafter
+        with:
+          publish: true
+          config-name: release-drafter.yaml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
