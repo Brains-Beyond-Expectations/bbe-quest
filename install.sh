@@ -11,3 +11,5 @@ tar -xvf ./tmp/bbe-$VERSION-linux-amd64.tar.gz
 rm -rf tmp
 
 sudo mv bbe /usr/local/bin
+
+bbe version

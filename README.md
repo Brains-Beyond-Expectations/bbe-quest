@@ -34,6 +34,16 @@ Our goal is to provide:
 > Since Talos does not support secure boot on x86, you will need to disable
 > secure boot in the BIOS settings of x86 devices.
 
+## Installing the BBE-Quest CLI
+
+To install the BBE-Quest CLI, run the following commands:
+
+```bash
+gh api /repos/nicolajv/bbe-quest/contents/install.sh | jq -r .content | base64 -d > install.sh
+chmod +x install.sh
+./install.sh
+```
+
 ### Local Development
 
 ## Requirements
