@@ -39,9 +39,7 @@ Our goal is to provide:
 To install the BBE-Quest CLI, run the following commands:
 
 ```bash
-gh api /repos/nicolajv/bbe-quest/contents/install.sh | jq -r .content | base64 -d > install.sh
-chmod +x install.sh
-./install.sh
+bash <(gh api /repos/nicolajv/bbe-quest/contents/install.sh | jq -r .content | base64 -d)
 ```
 
 ### Local Development
