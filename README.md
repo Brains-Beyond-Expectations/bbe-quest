@@ -43,10 +43,11 @@ curl -L https://github.com/nicolajv/bbe-quest/releases/download/0.1.1/bbe-0.1.1-
 ## Requirements
 
 - [Docker](https://docs.docker.com/get-docker/)
-- [Crane](https://github.com/google/go-containerregistry/blob/main/cmd/crane/README.md)
+- [crane](https://github.com/google/go-containerregistry/blob/main/cmd/crane/README.md)
 - [balenaEtcher](https://www.balena.io/etcher/)
 - [talosctl](https://www.talos.dev/v1.8/learn-more/talosctl/)
-- [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-quickstart.html)
+- [nmap](https://nmap.org/)
+- [yq](https://mikefarah.gitbook.io/yq/)
 
 ## Development Roadmap
 

@@ -3,6 +3,7 @@ package cmd
 import (
 	"os"
 
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
@@ -24,7 +25,11 @@ func Execute() {
 
 	// No command was provided
 	if len(os.Args) == 1 {
-		rootCmd.Help()
+		err := rootCmd.Help()
+		if err != nil {
+			logrus.Error("Error while printing help message")
+			os.Exit(1)
+		}
 		os.Exit(0)
 	}
 }

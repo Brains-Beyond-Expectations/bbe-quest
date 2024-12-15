@@ -1,1 +1,8 @@
+# Potential ISO files
 _out
+*.iso
+
+# Talos configuration files
+controlplane.yaml
+worker.yaml
+talosconfig
