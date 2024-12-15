@@ -32,6 +32,7 @@ Our goal is to provide:
 
 ## Requirements
 
+- [Docker](https://docs.docker.com/get-docker/)
 - [Crane](https://github.com/google/go-containerregistry/blob/main/cmd/crane/README.md)
 - [balenaEtcher](https://www.balena.io/etcher/)
 - [talosctl](https://www.talos.dev/v1.8/learn-more/talosctl/)
