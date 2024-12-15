@@ -9,7 +9,7 @@ import (
 
 var versionCmd = &cobra.Command{
 	Use:     "version",
-	Aliases: []string{"rev"},
+	Aliases: []string{"v"},
 	Short:   "Show bbe version",
 	Args:    cobra.ExactArgs(0),
 	Run: func(cmd *cobra.Command, args []string) {

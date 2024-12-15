@@ -30,6 +30,16 @@ Our goal is to provide:
 
 ### Getting Started
 
+## Installing the BBE-Quest CLI
+
+To install the BBE-Quest CLI, run the following command:
+
+```bash
+curl -L https://github.com/nicolajv/bbe-quest/releases/download/0.1.1/bbe-0.1.1-linux-amd64.tar.gz | tar xz && sudo mv bbe /usr/local/bin/ && sudo chmod +x /usr/local/bin/bbe
+```
+
+### Local Development
+
 ## Requirements
 
 - [Docker](https://docs.docker.com/get-docker/)
@@ -38,27 +48,7 @@ Our goal is to provide:
 - [talosctl](https://www.talos.dev/v1.8/learn-more/talosctl/)
 - [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-quickstart.html)
 
-## Usage on Intel NUC
-
-> [!NOTE]  
-> Since Talos does not support secure boot on x86, you will need to disable
-> secure boot in the BIOS settings of the Intel NUC.
-
-1. Run the talos-iso.sh script to create the ISO file.
-
-```bash
-bash ./talos-iso.sh
-```
-
-2. Use balenaEtcher to flash the ISO file to a USB drive.
-
-3. Boot the Intel NUC from the USB drive.
-
-4. ???
-
-5. Profit!
-
-## TODO
+## Development Roadmap
 
 - Guide through dependency setup, check for deps and ask to install (support
   brew, curl, wget, etc)
