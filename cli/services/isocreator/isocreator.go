@@ -1,4 +1,4 @@
-package services
+package isocreator
 
 import (
 	"fmt"
@@ -8,11 +8,6 @@ import (
 	"github.com/nicolajv/bbe-quest/helper"
 	"github.com/sirupsen/logrus"
 )
-
-func CheckIfIsoExists(outputDir string) bool {
-	_, err := exec.LookPath(fmt.Sprintf("%s/metal-amd64.iso", outputDir))
-	return err == nil
-}
 
 func CreateIso(outputDir string, extensions []string) (string, error) {
 	extensions, err := getExtensionImages(extensions)
