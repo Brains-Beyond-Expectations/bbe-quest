@@ -40,7 +40,7 @@ Our goal is to provide:
 
 > [!NOTE]  
 > Since Talos does not support secure boot on x86, you will need to disable
-> secureboot in the BIOS settings of the Intel NUC.
+> secure boot in the BIOS settings of the Intel NUC.
 
 1. Run the talos-iso.sh script to create the ISO file.
 
