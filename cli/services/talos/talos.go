@@ -125,3 +125,13 @@ func GetControlPlaneIp(configFile string) (string, error) {
 
 	return strings.TrimSpace(string(output)), nil
 }
+
+func DownloadKubeConfig(nodeIp string, controlPlaneIp string, talosConfigFile string) error {
+	cmd := exec.Command("talosctl", "kubeconfig", "--nodes", nodeIp, "--endpoints", controlPlaneIp, fmt.Sprintf("--talosconfig=%s", talosConfigFile))
+	err := cmd.Run()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}

@@ -144,6 +144,18 @@ var setupCmd = &cobra.Command{
 				logrus.WithFields(logrus.Fields{"error": err}).Error("Error while verifying node health")
 				os.Exit(1)
 			}
+
+			if createControlPlane {
+				err := talos.DownloadKubeConfig(ip, controlPlaneIp, talosConfigFile)
+				if err != nil {
+					logrus.WithFields(logrus.Fields{"error": err}).Error("Error while downloading kubeconfig")
+					os.Exit(1)
+				}
+
+				logrus.Infof("Control plane node %s successfully set up", ip)
+			} else {
+				logrus.Infof("Worker node %s successfully set up", ip)
+			}
 		}
 	},
 }
