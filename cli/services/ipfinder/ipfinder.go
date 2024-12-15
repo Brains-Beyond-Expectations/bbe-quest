@@ -45,7 +45,7 @@ func LocateDevice() ([]string, error) {
 func GetIp() (string, error) {
 	if helper.IsWsl() {
 		logrus.Info("WSL detected, trying to determine IP address...")
-		cmd := exec.Command("bash", "-c", `/mnt/c/Windows/System32/ipconfig.exe | grep 192.168. | grep -m1 IPv4 | awk '{print $14}' | tr -d '\r'`)
+		cmd := exec.Command("bash", "-c", `/mnt/c/Windows/System32/ipconfig.exe | grep -E '(192\.168\.|172\.16\.|10\.0\.)' | grep -m1 IPv4 | awk '{print $14}' | tr -d '\r'`)
 		output, err := cmd.CombinedOutput()
 		if err != nil {
 			logrus.WithFields(logrus.Fields{"error": err}).Error("Error while determining IP address")
