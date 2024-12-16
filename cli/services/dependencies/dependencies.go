@@ -22,7 +22,7 @@ func VerifyDependencies() bool {
 		err := cmd.Run()
 		if err != nil {
 			errors++
-			logrus.Errorf("Dependency check failed for %s, please install it", check)
+			logrus.WithFields(logrus.Fields{"error": err}).Errorf("Dependency check failed for %s, please install it", check)
 		}
 	}
 

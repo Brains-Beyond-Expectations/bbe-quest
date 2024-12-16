@@ -25,7 +25,7 @@ func Execute() {
 	if len(os.Args) == 1 {
 		err := rootCmd.Help()
 		if err != nil {
-			logrus.Error("Error while printing help message")
+			logrus.WithFields(logrus.Fields{"error": err}).Error("Error while printing help message")
 			os.Exit(1)
 		}
 		os.Exit(0)
