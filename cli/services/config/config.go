@@ -39,6 +39,12 @@ func GetBbeConfig() (*BbeConfig, error) {
 }
 
 func GenerateBbeConfig(storage string) error {
+	fileLocation := fmt.Sprintf("%s/bbe.yaml", helper.GetConfigDir())
+	_, exists := helper.CheckIfFileExists(fileLocation)
+	if exists {
+		return nil
+	}
+
 	fileContents := BbeConfig{
 		Bbe: struct {
 			Storage string `yaml:"storage"`
@@ -52,7 +58,7 @@ func GenerateBbeConfig(storage string) error {
 		panic(err)
 	}
 
-	return os.WriteFile(fmt.Sprintf("%s/bbe.yaml", helper.GetConfigDir()), yamlFile, 0644)
+	return os.WriteFile(fileLocation, yamlFile, 0644)
 }
 
 func CheckForTalosConfigs() bool {
@@ -163,7 +169,7 @@ func syncConfigFileWithAws(client *ssm.Client, name string) error {
 
 	parameterTime := output.Parameter.LastModifiedDate
 	if parameterTime.After(*modTime) {
-		return os.WriteFile(name, []byte(*output.Parameter.Value), 0644)
+		return os.WriteFile(filePath, []byte(*output.Parameter.Value), 0644)
 	}
 
 	content, err := os.ReadFile(filePath)

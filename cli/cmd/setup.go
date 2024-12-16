@@ -21,6 +21,19 @@ var setupCmd = &cobra.Command{
 	Short:   "Guides you through a BBE-Quest node setup",
 	Args:    cobra.ExactArgs(0),
 	Run: func(cmd *cobra.Command, args []string) {
+		bbeConfig, err := config.GetBbeConfig()
+		if err != nil {
+			bbeConfig = promptForConfigStorage()
+		}
+
+		if bbeConfig.Bbe.Storage == "aws" {
+			err := config.SyncConfigsWithAws()
+			if err != nil {
+				logrus.WithFields(logrus.Fields{"error": err}).Error("Error while syncing config with AWS")
+				os.Exit(1)
+			}
+		}
+
 		// Get current local path
 		workingDirectory, err := os.Getwd()
 		if err != nil {
