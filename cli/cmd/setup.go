@@ -26,8 +26,8 @@ var setupCmd = &cobra.Command{
 			bbeConfig = promptForConfigStorage()
 		}
 
-		if bbeConfig.Bbe.Storage == "aws" {
-			err := config.SyncConfigsWithAws()
+		if bbeConfig.Bbe.Storage.Type == "aws" {
+			err := config.SyncConfigsWithAws(bbeConfig)
 			if err != nil {
 				logrus.WithFields(logrus.Fields{"error": err}).Error("Error while syncing config with AWS")
 				os.Exit(1)
