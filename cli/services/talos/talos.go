@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nicolajv/bbe-quest/constants"
 	"github.com/nicolajv/bbe-quest/helper"
 	"github.com/sirupsen/logrus"
 )
@@ -27,12 +28,11 @@ func Ping(nodeIp string) bool {
 }
 
 func GenerateConfig(controlPlaneIp string, clusterName string) error {
-	cmd := exec.Command("talosctl", "gen", "config", clusterName, fmt.Sprintf("https://%s:6443", controlPlaneIp))
+	cmd := exec.Command("talosctl", "gen", "config", clusterName, fmt.Sprintf("https://%s:6443", controlPlaneIp), "--output", helper.GetConfigDir())
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		if strings.Contains(string(output), "already exists") {
-			logrus.Info("Config already exists, skipping generation")
-			return nil
+			return constants.ConfigExistsError
 		}
 		return err
 	}
@@ -43,7 +43,7 @@ func GenerateConfig(controlPlaneIp string, clusterName string) error {
 func JoinCluster(nodeIp string, nodeConfigFile string) error {
 	logrus.Infof("Instance %s is joining the cluster", nodeIp)
 
-	cmd := exec.Command("talosctl", "apply-config", "--insecure", "-n", nodeIp, "--file", nodeConfigFile)
+	cmd := exec.Command("talosctl", "apply-config", "--insecure", "-n", nodeIp, "--file", helper.GetConfigFilePath(nodeConfigFile))
 	err := cmd.Run()
 	if err != nil {
 		return err
@@ -52,13 +52,13 @@ func JoinCluster(nodeIp string, nodeConfigFile string) error {
 	return nil
 }
 
-func BootstrapCluster(nodeIp string, controlPlaneIp string, talosConfigFile string) error {
+func BootstrapCluster(nodeIp string, controlPlaneIp string) error {
 	logrus.Info("Bootstrapping cluster")
 
 	start := time.Now()
 	timeout := 5 * time.Minute
 	for {
-		cmd := exec.Command("talosctl", "bootstrap", "--nodes", nodeIp, "--endpoints", controlPlaneIp, fmt.Sprintf("--talosconfig=%s", talosConfigFile))
+		cmd := exec.Command("talosctl", "bootstrap", "--nodes", nodeIp, "--endpoints", controlPlaneIp, fmt.Sprintf("--talosconfig=%s", helper.GetConfigFilePath("talosconfig")))
 		err := cmd.Run()
 		if err == nil {
 			return nil
@@ -72,13 +72,13 @@ func BootstrapCluster(nodeIp string, controlPlaneIp string, talosConfigFile stri
 	}
 }
 
-func VerifyNodeHealth(nodeIp string, controlPlaneIp string, talosConfigFile string) error {
+func VerifyNodeHealth(nodeIp string, controlPlaneIp string) error {
 	logrus.Info("Verifying cluster health")
 
 	start := time.Now()
 	timeout := 5 * time.Minute
 	for {
-		cmd := exec.Command("talosctl", "--nodes", nodeIp, "--endpoints", controlPlaneIp, "health", fmt.Sprintf("--talosconfig=%s", talosConfigFile))
+		cmd := exec.Command("talosctl", "--nodes", nodeIp, "--endpoints", controlPlaneIp, "health", fmt.Sprintf("--talosconfig=%s", helper.GetConfigFilePath("talosconfig")))
 		err := cmd.Run()
 		if err == nil {
 			return nil
@@ -106,7 +106,7 @@ func GetDisks(nodeIp string) ([]string, error) {
 }
 
 func ModifyConfigDisk(configFile string, disk string) error {
-	cmd := exec.Command("yq", "eval", fmt.Sprintf(`.machine.install.disk = "%s"`, disk), "-i", configFile)
+	cmd := exec.Command("yq", "eval", fmt.Sprintf(`.machine.install.disk = "%s"`, disk), "-i", helper.GetConfigFilePath(configFile))
 	err := cmd.Run()
 	if err != nil {
 		return err
@@ -116,18 +116,17 @@ func ModifyConfigDisk(configFile string, disk string) error {
 }
 
 func GetControlPlaneIp(configFile string) (string, error) {
-	cmd := exec.Command("yq", "eval", `.cluster.controlPlane.endpoint | sub("https://", "") | sub(":6443", "")`, configFile)
+	cmd := exec.Command("yq", "eval", `.cluster.controlPlane.endpoint | sub("https://", "") | sub(":6443", "")`, helper.GetConfigFilePath(configFile))
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		fmt.Println(string(output))
 		return "", err
 	}
 
 	return strings.TrimSpace(string(output)), nil
 }
 
-func DownloadKubeConfig(nodeIp string, controlPlaneIp string, talosConfigFile string) error {
-	cmd := exec.Command("talosctl", "kubeconfig", "--nodes", nodeIp, "--endpoints", controlPlaneIp, fmt.Sprintf("--talosconfig=%s", talosConfigFile))
+func DownloadKubeConfig(nodeIp string, controlPlaneIp string) error {
+	cmd := exec.Command("talosctl", "kubeconfig", "--nodes", nodeIp, "--endpoints", controlPlaneIp, fmt.Sprintf("--talosconfig=%s", helper.GetConfigFilePath("talosconfig")))
 	err := cmd.Run()
 	if err != nil {
 		return err

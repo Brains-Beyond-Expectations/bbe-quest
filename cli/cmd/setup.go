@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/nicolajv/bbe-quest/helper"
+	"github.com/nicolajv/bbe-quest/services/config"
 	"github.com/nicolajv/bbe-quest/services/dependencies"
 	"github.com/nicolajv/bbe-quest/services/ipfinder"
 	"github.com/nicolajv/bbe-quest/services/isocreator"
@@ -20,6 +21,19 @@ var setupCmd = &cobra.Command{
 	Short:   "Guides you through a BBE-Quest node setup",
 	Args:    cobra.ExactArgs(0),
 	Run: func(cmd *cobra.Command, args []string) {
+		bbeConfig, err := config.GetBbeConfig()
+		if err != nil {
+			bbeConfig = promptForConfigStorage()
+		}
+
+		if bbeConfig.Bbe.Storage.Type == "aws" {
+			err := config.SyncConfigsWithAws(bbeConfig)
+			if err != nil {
+				logrus.WithFields(logrus.Fields{"error": err}).Error("Error while syncing config with AWS")
+				os.Exit(1)
+			}
+		}
+
 		// Get current local path
 		workingDirectory, err := os.Getwd()
 		if err != nil {
@@ -37,12 +51,11 @@ var setupCmd = &cobra.Command{
 			logrus.WithFields(logrus.Fields{"error": err}).Error("Error while creating select")
 			os.Exit(1)
 		}
-
 		createControlPlane := answer == "Yes"
 
-		configExists := helper.CheckIfFileExists("talosconfig")
+		configExists := config.CheckForTalosConfigs()
 		if !configExists && !createControlPlane {
-			logrus.Error("No config file found while trying to enroll new node in exsting cluster, please create a control plane first")
+			logrus.Error("No config files found while trying to enroll new node in exsting cluster, please create your first node first")
 			os.Exit(1)
 		}
 
@@ -99,7 +112,6 @@ var setupCmd = &cobra.Command{
 		}
 
 		for _, ip := range ips {
-			talosConfigFile := "talosconfig"
 			nodeConfigFile := "worker.yaml"
 			if createControlPlane {
 				nodeConfigFile = "controlplane.yaml"
@@ -130,7 +142,7 @@ var setupCmd = &cobra.Command{
 			}
 
 			if createControlPlane {
-				err := talos.BootstrapCluster(ip, controlPlaneIp, talosConfigFile)
+				err := talos.BootstrapCluster(ip, controlPlaneIp)
 				if err != nil {
 					logrus.WithFields(logrus.Fields{"error": err}).Error("Error while bootstrapping cluster")
 					os.Exit(1)
@@ -139,14 +151,14 @@ var setupCmd = &cobra.Command{
 				logrus.Infof("Cluster bootstrapping successfully requested at %s", ip)
 			}
 
-			err = talos.VerifyNodeHealth(ip, controlPlaneIp, talosConfigFile)
+			err = talos.VerifyNodeHealth(ip, controlPlaneIp)
 			if err != nil {
 				logrus.WithFields(logrus.Fields{"error": err}).Error("Error while verifying node health")
 				os.Exit(1)
 			}
 
 			if createControlPlane {
-				err := talos.DownloadKubeConfig(ip, controlPlaneIp, talosConfigFile)
+				err := talos.DownloadKubeConfig(ip, controlPlaneIp)
 				if err != nil {
 					logrus.WithFields(logrus.Fields{"error": err}).Error("Error while downloading kubeconfig")
 					os.Exit(1)
@@ -165,7 +177,7 @@ func isoCreation(workingDirectory string) {
 
 	createIso := true
 
-	isoExists := helper.CheckIfFileExists(fmt.Sprintf("%s/metal-amd64.iso", isoDirectory))
+	_, isoExists := helper.CheckIfFileExists(fmt.Sprintf("%s/metal-amd64.iso", isoDirectory))
 	if isoExists {
 		result, err := ui.CreateSelect("An ISO already exists, would you like to recreate it?", []string{"Yes", "No"})
 		if err != nil {
@@ -184,7 +196,7 @@ func isoCreation(workingDirectory string) {
 		if err != nil {
 			os.Exit(1)
 		}
-		fmt.Println(result)
+		logrus.Info(result)
 	}
 
 }

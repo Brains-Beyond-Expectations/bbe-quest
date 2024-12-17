@@ -1,14 +1,26 @@
 package helper
 
 import (
+	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 )
 
-func CheckIfFileExists(file string) bool {
-	_, err := exec.LookPath(file)
-	return err == nil
+var configDir string = ".bbe"
+
+func CheckIfFileExists(file string) (*time.Time, bool) {
+	fileInfo, err := os.Stat(file)
+	if err != nil {
+		return nil, false
+	}
+
+	modTime := fileInfo.ModTime()
+
+	return &modTime, err == nil
 }
 
 func PipeCommands(commands ...*exec.Cmd) ([]byte, error) {
@@ -49,4 +61,17 @@ func IsValidIp(ip string) bool {
 	pattern := `^((25[0-5]|(2[0-4]|1\d|[1-9]|)\d)\.?\b){4}$`
 	match, err := regexp.MatchString(pattern, ip)
 	return err == nil && match
+}
+
+func GetConfigDir() string {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		panic(err)
+	}
+	return filepath.Join(homeDir, configDir)
+}
+
+func GetConfigFilePath(name string) string {
+	configDir := GetConfigDir()
+	return fmt.Sprintf("%s/%s", configDir, name)
 }
