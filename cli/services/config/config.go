@@ -54,17 +54,23 @@ func GenerateBbeConfig(storage string) error {
 		return nil
 	}
 
-	client, err := initS3Client()
-	if err != nil {
-		return err
+	bbeConfig := &BbeConfig{}
+	if storage == "local" {
+		bbeConfig.Bbe.Storage.Type = "local"
+	} else if storage == "aws" {
+
+		client, err := initS3Client()
+		if err != nil {
+			return err
+		}
+
+		bbeConfig, err = findOrCreateBucket(client, nil)
+		if err != nil {
+			return err
+		}
 	}
 
-	bbeConfig, err := findOrCreateBucket(client, nil)
-	if err != nil {
-		return err
-	}
-
-	_, err = UpdateBbeConfig(bbeConfig)
+	_, err := UpdateBbeConfig(bbeConfig)
 	return err
 }
 
@@ -73,7 +79,8 @@ func UpdateBbeConfig(newConfig *BbeConfig) (*BbeConfig, error) {
 
 	currentConfig, err := GetBbeConfig()
 	if err != nil {
-		return nil, err
+		currentConfig = &BbeConfig{}
+		currentConfig.Bbe.Storage.Type = "local"
 	}
 
 	// Only update fields that are set in the new config
