@@ -4,8 +4,8 @@ import (
 	"os"
 
 	"github.com/nicolajv/bbe-quest/services/config"
+	"github.com/nicolajv/bbe-quest/services/logger"
 	"github.com/nicolajv/bbe-quest/ui"
-	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
@@ -23,7 +23,7 @@ var configCmd = &cobra.Command{
 		if bbeConfig.Bbe.Storage.Type == "aws" {
 			err := config.SyncConfigsWithAws(bbeConfig)
 			if err != nil {
-				logrus.WithFields(logrus.Fields{"error": err}).Error("Error while syncing config with AWS")
+				logger.Error("Error while syncing config with AWS", err)
 				os.Exit(1)
 			}
 		}
@@ -33,24 +33,28 @@ var configCmd = &cobra.Command{
 func promptForConfigStorage() *config.BbeConfig {
 	choice, err := ui.CreateSelect("No BBE configuration file found, where would you like to store your config files?", []string{"Local", "AWS"})
 	if err != nil {
-		logrus.WithFields(logrus.Fields{"error": err}).Error("Error while creating select")
+		logger.Error("Error while creating select", err)
 		os.Exit(1)
 	}
 
 	switch choice {
 	case "Local":
-		config.GenerateBbeConfig("local")
-	case "AWS":
-		config.GenerateBbeConfig("aws")
+		err := config.GenerateBbeConfig("local")
 		if err != nil {
-			logrus.WithFields(logrus.Fields{"error": err}).Error("Error while downloading config from AWS")
+			logger.Error("Error while generating BBE config", err)
+			os.Exit(1)
+		}
+	case "AWS":
+		err := config.GenerateBbeConfig("aws")
+		if err != nil {
+			logger.Error("Error while generating BBE config", err)
 			os.Exit(1)
 		}
 	}
 
 	bbeConfig, err := config.GetBbeConfig()
 	if err != nil {
-		logrus.WithFields(logrus.Fields{"error": err}).Error("Error while reading config file")
+		logger.Error("Error while getting BBE config", err)
 		os.Exit(1)
 	}
 

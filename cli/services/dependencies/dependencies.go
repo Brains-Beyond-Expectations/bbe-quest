@@ -3,7 +3,7 @@ package dependencies
 import (
 	"os/exec"
 
-	"github.com/sirupsen/logrus"
+	"github.com/nicolajv/bbe-quest/services/logger"
 )
 
 func VerifyDependencies() bool {
@@ -22,7 +22,7 @@ func VerifyDependencies() bool {
 		err := cmd.Run()
 		if err != nil {
 			errors++
-			logrus.WithFields(logrus.Fields{"error": err}).Errorf("Dependency check failed for %s, please install it", check)
+			logger.Error("Dependency check failed", err)
 		}
 	}
 

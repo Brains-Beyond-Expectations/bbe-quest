@@ -52,6 +52,5 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.28.6
 	github.com/cqroot/prompt v0.9.4
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
-	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/pflag v1.0.5 // indirect
 )

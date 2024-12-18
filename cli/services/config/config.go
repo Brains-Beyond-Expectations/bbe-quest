@@ -14,8 +14,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/nicolajv/bbe-quest/helper"
+	"github.com/nicolajv/bbe-quest/services/logger"
 	"github.com/nicolajv/bbe-quest/services/talos"
-	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
 )
 
@@ -68,10 +68,24 @@ func GenerateBbeConfig(storage string) error {
 	return err
 }
 
-// TODO make this a patch rather than full update
-func UpdateBbeConfig(bbeConfig *BbeConfig) (*BbeConfig, error) {
+func UpdateBbeConfig(newConfig *BbeConfig) (*BbeConfig, error) {
 	fileLocation := fmt.Sprintf("%s/bbe.yaml", helper.GetConfigDir())
-	yamlFile, err := yaml.Marshal(&bbeConfig)
+
+	currentConfig, err := GetBbeConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	// Only update fields that are set in the new config
+	if newConfig.Bbe.Storage.Type != "" {
+		currentConfig.Bbe.Storage.Type = newConfig.Bbe.Storage.Type
+	}
+	if newConfig.Bbe.Storage.Aws.BucketName != "" {
+		currentConfig.Bbe.Storage.Aws.BucketName = newConfig.Bbe.Storage.Aws.BucketName
+	}
+
+	// Write updated config back to file
+	yamlFile, err := yaml.Marshal(currentConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -81,9 +95,8 @@ func UpdateBbeConfig(bbeConfig *BbeConfig) (*BbeConfig, error) {
 		return nil, err
 	}
 
-	return bbeConfig, nil
+	return currentConfig, nil
 }
-
 func CheckForTalosConfigs() bool {
 	configDir := helper.GetConfigDir()
 
@@ -170,12 +183,12 @@ func findOrCreateBucket(client *s3.Client, bbeConfig *BbeConfig) (*BbeConfig, er
 			if err != nil {
 				return nil, err
 			}
-			logrus.Infof("Found existing configuration on AWS: %s", bbeConfig.Bbe.Storage.Aws.BucketName)
+			logger.Infof("Found existing configuration on AWS: %s", bbeConfig.Bbe.Storage.Aws.BucketName)
 			return bbeConfig, nil
 		}
 	}
 
-	logrus.Info("No existing configuration found on AWS, creating a new one")
+	logger.Info("No existing configuration found on AWS, creating a new one")
 	attempts := 0
 	for attempts < 3 {
 		timestamp := fmt.Sprintf("%d", time.Now().Unix())
@@ -183,7 +196,7 @@ func findOrCreateBucket(client *s3.Client, bbeConfig *BbeConfig) (*BbeConfig, er
 
 		err = createS3Bucket(ctx, client, bucketName)
 		if err != nil {
-			logrus.Errorf("Failed to create configuration file: %s", err)
+			logger.Error("Failed to create configuration file", err)
 		}
 
 		if err == nil {
@@ -205,7 +218,7 @@ func findOrCreateBucket(client *s3.Client, bbeConfig *BbeConfig) (*BbeConfig, er
 				}
 			}
 
-			logrus.Infof("Created new configuration on AWS: %s", bucketName)
+			logger.Infof("Created new configuration on AWS: %s", bucketName)
 			return bbeConfig, nil
 		}
 
@@ -269,7 +282,7 @@ func syncConfigFileWithAws(client *s3.Client, bbeConfig *BbeConfig, name string)
 			return err
 		}
 
-		logrus.Infof("Config file %s synced from AWS", name)
+		logger.Infof("Config file %s synced from AWS", name)
 		return nil
 	}
 
@@ -288,7 +301,7 @@ func syncConfigFileWithAws(client *s3.Client, bbeConfig *BbeConfig, name string)
 			return err
 		}
 
-		logrus.Infof("Config file %s synced to AWS", name)
+		logger.Infof("Config file %s synced to AWS", name)
 		return nil
 	}
 
@@ -305,7 +318,7 @@ func syncConfigFileWithAws(client *s3.Client, bbeConfig *BbeConfig, name string)
 	}
 
 	if bytes.Equal(s3FileContents, content) {
-		logrus.Infof("Config file %s is already in sync", name)
+		logger.Infof("Config file %s is already in sync", name)
 		return nil
 	}
 
@@ -316,7 +329,7 @@ func syncConfigFileWithAws(client *s3.Client, bbeConfig *BbeConfig, name string)
 			return err
 		}
 
-		logrus.Infof("Config file %s on AWS was newer than the local copy and has been synced", name)
+		logger.Infof("Config file %s on AWS was newer than the local copy and has been synced", name)
 		return nil
 	}
 
@@ -329,7 +342,7 @@ func syncConfigFileWithAws(client *s3.Client, bbeConfig *BbeConfig, name string)
 		return s3Err
 	}
 
-	logrus.Infof("Local config file %s was newer than the copy on AWS and has been synced", name)
+	logger.Infof("Local config file %s was newer than the copy on AWS and has been synced", name)
 	return nil
 }
 

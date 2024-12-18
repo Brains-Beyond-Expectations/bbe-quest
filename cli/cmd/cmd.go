@@ -3,7 +3,7 @@ package cmd
 import (
 	"os"
 
-	"github.com/sirupsen/logrus"
+	"github.com/nicolajv/bbe-quest/services/logger"
 	"github.com/spf13/cobra"
 )
 
@@ -25,7 +25,7 @@ func Execute() {
 	if len(os.Args) == 1 {
 		err := rootCmd.Help()
 		if err != nil {
-			logrus.WithFields(logrus.Fields{"error": err}).Error("Error while printing help message")
+			logger.Error("Error while printing help message", err)
 			os.Exit(1)
 		}
 		os.Exit(0)

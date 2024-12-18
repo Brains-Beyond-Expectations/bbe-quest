@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/nicolajv/bbe-quest/helper"
-	"github.com/sirupsen/logrus"
+	"github.com/nicolajv/bbe-quest/services/logger"
 )
 
 func CreateIso(outputDir string, extensions []string) (string, error) {
@@ -35,7 +35,7 @@ func getExtensionImages(extensionIdentifiers []string) ([]string, error) {
 
 	output, err := helper.PipeCommands(cmd1, cmd2, cmd3)
 	if err != nil {
-		logrus.WithFields(logrus.Fields{"error": err, "output": string(output)}).Error("Error while getting extension images")
+		logger.Error("Error while getting extension images", err)
 		return nil, err
 	}
 
@@ -53,7 +53,7 @@ func runDockerCommand(outputDir string, extensionsStrings []string) (string, err
 	cmd := exec.Command("docker", args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		logrus.WithFields(logrus.Fields{"error": err, "output": string(output)}).Error("Error while generating ISO")
+		logger.Error("Error while generating ISO", err)
 		return "", err
 	}
 	return string(output), nil

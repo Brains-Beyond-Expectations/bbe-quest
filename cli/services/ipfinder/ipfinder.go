@@ -6,9 +6,9 @@ import (
 	"strings"
 
 	"github.com/nicolajv/bbe-quest/helper"
+	"github.com/nicolajv/bbe-quest/services/logger"
 	"github.com/nicolajv/bbe-quest/services/talos"
 	"github.com/nicolajv/bbe-quest/ui"
-	"github.com/sirupsen/logrus"
 )
 
 func LocateDevice() ([]string, error) {
@@ -17,7 +17,7 @@ func LocateDevice() ([]string, error) {
 		return nil, err
 	}
 
-	logrus.Infof("Scanning network for Talos devices on %s/24", ip)
+	logger.Infof("Scanning network for Talos devices on %s/24", ip)
 
 	cmd := exec.Command("bash", "-c", fmt.Sprintf(`nmap -sn %s/24 -oG - | awk '/Up$/{print $2}'`, ip))
 	output, err := cmd.CombinedOutput()
@@ -32,23 +32,23 @@ func LocateDevice() ([]string, error) {
 	talosIps := []string{}
 	for _, ip := range ips {
 		if talos.Ping(ip) {
-			logrus.Infof("Found Talos device at %s", ip)
+			logger.Infof("Found Talos device at %s", ip)
 			talosIps = append(talosIps, ip)
 		}
 	}
 
-	logrus.Infof("Found %d Talos device(s)", len(talosIps))
+	logger.Infof("Found %d Talos device(s)", len(talosIps))
 
 	return talosIps, nil
 }
 
 func GetIp() (string, error) {
 	if helper.IsWsl() {
-		logrus.Info("WSL detected, trying to determine IP address...")
+		logger.Info("WSL detected, trying to determine IP address...")
 		cmd := exec.Command("bash", "-c", `/mnt/c/Windows/System32/ipconfig.exe | grep -E '(192\.168\.|172\.16\.|10\.0\.)' | grep -m1 IPv4 | awk '{print $14}' | tr -d '\r'`)
 		output, err := cmd.CombinedOutput()
 		if err != nil {
-			logrus.WithFields(logrus.Fields{"error": err}).Error("Error while determining IP address")
+			logger.Error("Error while determining IP address", err)
 			return "", err
 		}
 		result := strings.TrimSpace(string(output))

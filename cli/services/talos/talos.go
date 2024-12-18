@@ -8,7 +8,7 @@ import (
 
 	"github.com/nicolajv/bbe-quest/constants"
 	"github.com/nicolajv/bbe-quest/helper"
-	"github.com/sirupsen/logrus"
+	"github.com/nicolajv/bbe-quest/services/logger"
 )
 
 func Ping(nodeIp string) bool {
@@ -41,7 +41,7 @@ func GenerateConfig(controlPlaneIp string, clusterName string) error {
 }
 
 func JoinCluster(nodeIp string, nodeConfigFile string) error {
-	logrus.Infof("Instance %s is joining the cluster", nodeIp)
+	logger.Infof("Instance %s is joining the cluster", nodeIp)
 
 	cmd := exec.Command("talosctl", "apply-config", "--insecure", "-n", nodeIp, "--file", helper.GetConfigFilePath(nodeConfigFile))
 	err := cmd.Run()
@@ -53,7 +53,7 @@ func JoinCluster(nodeIp string, nodeConfigFile string) error {
 }
 
 func BootstrapCluster(nodeIp string, controlPlaneIp string) error {
-	logrus.Info("Bootstrapping cluster")
+	logger.Info("Bootstrapping cluster")
 
 	start := time.Now()
 	timeout := 5 * time.Minute
@@ -73,7 +73,7 @@ func BootstrapCluster(nodeIp string, controlPlaneIp string) error {
 }
 
 func VerifyNodeHealth(nodeIp string, controlPlaneIp string) error {
-	logrus.Info("Verifying cluster health")
+	logger.Info("Verifying cluster health")
 
 	start := time.Now()
 	timeout := 5 * time.Minute
