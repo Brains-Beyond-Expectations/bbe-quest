@@ -73,7 +73,8 @@ func UpdateBbeConfig(newConfig *BbeConfig) (*BbeConfig, error) {
 
 	currentConfig, err := GetBbeConfig()
 	if err != nil {
-		return nil, err
+		currentConfig = &BbeConfig{}
+		currentConfig.Bbe.Storage.Type = "local"
 	}
 
 	// Only update fields that are set in the new config
