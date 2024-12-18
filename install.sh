@@ -10,7 +10,7 @@ elif [ "$ARCH" = "aarch64" ]; then
     ARCH="arm64"
 fi
 
-LATEST_URL=$(curl -s https://api.github.com/repos/Brains-Beyond-Expectations/bbe-quest/releases/latest | grep "browser_download_url.*${OS}_${ARCH}.tar.gz\"" | cut -d '"' -f 4)
+LATEST_URL=$(curl -s https://api.github.com/repos/Brains-Beyond-Expectations/bbe-quest/releases/latest | grep "browser_download_url.*${OS}-${ARCH}.tar.gz\"" | cut -d '"' -f 4)
 
 TMP_DIR=$(mktemp -d)
 cd "$TMP_DIR"
