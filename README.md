@@ -30,7 +30,7 @@ cluster.
 To install the BBE-Quest CLI, run the following command:
 
 ```bash
-bash <(gh api /repos/nicolajv/bbe-quest/contents/install.sh | jq -r .content | base64 -d)
+curl -fsSL https://raw.githubusercontent.com/Brains-Beyond-Expectations/bbe-quest/main/install.sh | bash
 ```
 
 ## Local Development

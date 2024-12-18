@@ -2,16 +2,22 @@
 
 set -e
 
-VERSION=$(gh release list --limit 1 --json tagName -q '.[0].tagName')
+OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
+ARCH="$(uname -m)"
+if [ "$ARCH" = "x86_64" ]; then
+    ARCH="amd64"
+elif [ "$ARCH" = "aarch64" ]; then
+    ARCH="arm64"
+fi
 
-mkdir -p tmp
+LATEST_URL=$(curl -s https://api.github.com/repos/Brains-Beyond-Expectations/bbe-quest/releases/latest | grep "browser_download_url.*${OS}_${ARCH}.tar.gz\"" | cut -d '"' -f 4)
 
-gh release download "$VERSION" --repo nicolajv/bbe-quest --pattern "*linux-amd64.tar.gz" --dir ./tmp
+TMP_DIR=$(mktemp -d)
+cd "$TMP_DIR"
 
-tar -xvf ./tmp/bbe-"$VERSION"-linux-amd64.tar.gz
+curl -L "$LATEST_URL" -o bbe-cli.tar.gz
 
-rm -rf tmp
-
+tar -xzf bbe-cli.tar.gz
 sudo mv bbe /usr/local/bin
 
 bbe version
