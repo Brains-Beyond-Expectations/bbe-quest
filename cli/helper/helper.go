@@ -27,7 +27,7 @@ func CheckIfFileExists(file string) (*time.Time, bool) {
 
 func PipeCommands(commands ...*exec.Cmd) ([]byte, error) {
 	if len(commands) == 0 {
-		return nil, fmt.Errorf("no commands provided")
+		return nil, fmt.Errorf("No commands provided")
 	}
 
 	if len(commands) == 1 {
