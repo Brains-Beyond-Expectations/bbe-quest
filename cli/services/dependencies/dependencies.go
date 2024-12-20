@@ -3,7 +3,7 @@ package dependencies
 import (
 	"os/exec"
 
-	"github.com/nicolajv/bbe-quest/services/logger"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/services/logger"
 )
 
 func VerifyDependencies() bool {
@@ -22,8 +22,15 @@ func VerifyDependencies() bool {
 		err := cmd.Run()
 		if err != nil {
 			errors++
-			logger.Error("Dependency check failed", err)
+			logger.Error("Dependency check failed", nil)
 		}
+	}
+
+	dockerRunninng := exec.Command("docker", "info")
+	err := dockerRunninng.Run()
+	if err != nil {
+		errors++
+		logger.Error("Please make sure Docker is running", nil)
 	}
 
 	return errors == 0

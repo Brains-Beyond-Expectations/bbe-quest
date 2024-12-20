@@ -1,8 +1,8 @@
 package main
 
 import (
-	"github.com/nicolajv/bbe-quest/cmd"
-	"github.com/nicolajv/bbe-quest/services/logger"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cmd"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/services/logger"
 )
 
 func main() {

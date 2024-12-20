@@ -5,10 +5,10 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/nicolajv/bbe-quest/helper"
-	"github.com/nicolajv/bbe-quest/services/logger"
-	"github.com/nicolajv/bbe-quest/services/talos"
-	"github.com/nicolajv/bbe-quest/ui"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/helper"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/services/logger"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/services/talos"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/ui"
 )
 
 func LocateDevice() ([]string, error) {
@@ -22,6 +22,7 @@ func LocateDevice() ([]string, error) {
 	cmd := exec.Command("bash", "-c", fmt.Sprintf(`nmap -sn %s/24 -oG - | awk '/Up$/{print $2}'`, ip))
 	output, err := cmd.CombinedOutput()
 	if err != nil {
+		logger.Debug(string(output))
 		return nil, err
 	}
 
@@ -48,7 +49,8 @@ func GetIp() (string, error) {
 		cmd := exec.Command("bash", "-c", `/mnt/c/Windows/System32/ipconfig.exe | grep -E '(192\.168\.|172\.16\.|10\.0\.)' | grep -m1 IPv4 | awk '{print $14}' | tr -d '\r'`)
 		output, err := cmd.CombinedOutput()
 		if err != nil {
-			logger.Error("Error while determining IP address", err)
+			logger.Debug(string(output))
+			logger.Error("Error while determining IP address", nil)
 			return "", err
 		}
 		result := strings.TrimSpace(string(output))

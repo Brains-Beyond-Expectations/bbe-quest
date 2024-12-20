@@ -9,13 +9,13 @@ import (
 	"os"
 	"time"
 
+	"github.com/Brains-Beyond-Expectations/bbe-quest/helper"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/services/logger"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/services/talos"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
-	"github.com/nicolajv/bbe-quest/helper"
-	"github.com/nicolajv/bbe-quest/services/logger"
-	"github.com/nicolajv/bbe-quest/services/talos"
 	"gopkg.in/yaml.v3"
 )
 

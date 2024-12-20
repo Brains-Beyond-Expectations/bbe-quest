@@ -8,7 +8,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/nicolajv/bbe-quest/constants"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/constants"
 )
 
 type plainTextHandler struct {

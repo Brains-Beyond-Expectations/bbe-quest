@@ -47,5 +47,5 @@ jobs:
           binary_name: "bbe"
           release_tag: ${{ needs.draft-release.outputs.release_tag }}
           ldflags:
-            -X 'github.com/nicolajv/bbe-quest/constants.Version=v${{
+            -X 'github.com/Brains-Beyond-Expectations/bbe-quest/constants.Version=v${{
             needs.draft-release.outputs.release_tag }}'

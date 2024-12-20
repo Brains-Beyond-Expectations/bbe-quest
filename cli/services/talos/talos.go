@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nicolajv/bbe-quest/constants"
-	"github.com/nicolajv/bbe-quest/helper"
-	"github.com/nicolajv/bbe-quest/services/logger"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/constants"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/helper"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/services/logger"
 )
 
 func Ping(nodeIp string) bool {

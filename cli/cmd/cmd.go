@@ -3,7 +3,7 @@ package cmd
 import (
 	"os"
 
-	"github.com/nicolajv/bbe-quest/services/logger"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/services/logger"
 	"github.com/spf13/cobra"
 )
 

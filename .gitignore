@@ -1,6 +1,7 @@
-# Potential ISO files
+# Potential image files
 _out
 *.iso
+*.raw.xz
 
 # Talos configuration files
 controlplane.yaml
