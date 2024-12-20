@@ -72,13 +72,21 @@ var setupCmd = &cobra.Command{
 
 		imageCreation(workingDirectory, nodeType)
 
-		_, err = ui.CreateSelect("Please use balenaEtcher to flash the ISO to USB", []string{"Done"})
+		firstMessage := "Please use balenaEtcher to flash the .iso to your USB device"
+		secondMessage := "Please insert the USB device into your new node and boot from it"
+
+		if nodeType.ImagerType == "rpi_generic" {
+			firstMessage = "Please use balenaEtcher to flash the .xz to your SD card"
+			secondMessage = "Please insert the SD card into your new node and boot from it"
+		}
+
+		_, err = ui.CreateSelect(firstMessage, []string{"Done"})
 		if err != nil {
 			logger.Error("Error while creating select", err)
 			os.Exit(1)
 		}
 
-		_, err = ui.CreateSelect("Please insert the USB device into your new node and boot from it", []string{"Done"})
+		_, err = ui.CreateSelect(secondMessage, []string{"Done"})
 		if err != nil {
 			logger.Error("Error while creating select", err)
 			os.Exit(1)
@@ -206,7 +214,6 @@ func imageCreation(workingDirectory string, nodeType imagecreator.NodeType) {
 		os.Exit(1)
 	}
 	logger.Info(result)
-
 }
 
 func init() {

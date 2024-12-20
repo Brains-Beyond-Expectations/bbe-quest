@@ -2,6 +2,9 @@ package imagecreator
 
 import (
 	"fmt"
+	"io"
+	"net/http"
+	"os"
 	"os/exec"
 	"strings"
 
@@ -36,6 +39,29 @@ var RaspberryPi = NodeType{
 }
 
 func CreateImage(nodeType NodeType, outputDir string) (string, error) {
+	// TODO: Replace this with proper imager
+	if nodeType.ImagerType == "rpi_generic" {
+		outputFile := fmt.Sprintf("%s/%s", outputDir, nodeType.OutputFile)
+		sourceUrl := "https://factory.talos.dev/image/f47e6cd2634c7a96988861031bcc4144468a1e3aef82cca4f5b5ca3fffef778a/v1.9.0/metal-arm64.raw.xz"
+		resp, err := http.Get(sourceUrl)
+		if err != nil {
+			return "", err
+		}
+		defer resp.Body.Close()
+
+		out, err := os.Create(outputFile)
+		if err != nil {
+			return "", err
+		}
+		defer out.Close()
+
+		_, err = io.Copy(out, resp.Body)
+		if err != nil {
+			return "", err
+		}
+		return outputFile, nil
+	}
+
 	extensions, err := getExtensionImages(nodeType.Extensions)
 	if err != nil {
 		return "", err
