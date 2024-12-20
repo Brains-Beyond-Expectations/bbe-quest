@@ -103,6 +103,7 @@ var setupCmd = &cobra.Command{
 			os.Exit(0)
 		}
 
+		var clusterName string
 		if createControlPlane {
 			if len(ips) > 1 {
 				logger.Info("More than one device found, please only set up one device at a time when creating your first node")
@@ -110,7 +111,7 @@ var setupCmd = &cobra.Command{
 			}
 
 			if !configExists {
-				clusterName, err := ui.CreateInput("Please enter what you want to name your cluster")
+				clusterName, err = ui.CreateInput("Please enter what you want to name your cluster")
 				if err != nil {
 					logger.Error("Error while creating input", err)
 					os.Exit(1)
@@ -182,6 +183,14 @@ var setupCmd = &cobra.Command{
 					logger.Error("Error while downloading kubeconfig", err)
 					os.Exit(1)
 				}
+
+				config.UpdateBbeConfig(&config.BbeConfig{
+					Bbe: config.Bbe{
+						Cluster: &config.Cluster{
+							Name: clusterName,
+						},
+					},
+				})
 
 				logger.Infof("Control plane node %s successfully set up", ip)
 			} else {

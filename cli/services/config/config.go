@@ -20,14 +20,35 @@ import (
 )
 
 type BbeConfig struct {
-	Bbe struct {
-		Storage struct {
-			Type string `yaml:"type"` // "local" or "aws"
-			Aws  struct {
-				BucketName string `yaml:"bucket_name"`
-			} `yaml:"aws"`
-		} `yaml:"storage"`
-	} `yaml:"bbe"`
+	Bbe Bbe `yaml:"bbe"`
+}
+
+type Bbe struct {
+	Cluster  *Cluster  `yaml:"cluster"`
+	Storage  *Storage  `yaml:"storage"`
+	Packages *Packages `yaml:"packages"`
+}
+
+type Cluster struct {
+	Name string `yaml:"name"`
+}
+
+type Storage struct {
+	Type string `yaml:"type"`
+	Aws  *Aws   `yaml:"aws"`
+}
+
+type Aws struct {
+	BucketName string `yaml:"bucket_name"`
+}
+
+type Packages struct {
+	Package []*Package `yaml:"package"`
+}
+
+type Package struct {
+	Name    string `yaml:"name"`
+	Version string `yaml:"version"`
 }
 
 func GetBbeConfig() (*BbeConfig, error) {
@@ -84,11 +105,14 @@ func UpdateBbeConfig(newConfig *BbeConfig) (*BbeConfig, error) {
 	}
 
 	// Only update fields that are set in the new config
-	if newConfig.Bbe.Storage.Type != "" {
+	if newConfig.Bbe.Storage != nil && newConfig.Bbe.Storage.Type != "" {
 		currentConfig.Bbe.Storage.Type = newConfig.Bbe.Storage.Type
 	}
-	if newConfig.Bbe.Storage.Aws.BucketName != "" {
+	if newConfig.Bbe.Storage != nil && newConfig.Bbe.Storage.Aws.BucketName != "" {
 		currentConfig.Bbe.Storage.Aws.BucketName = newConfig.Bbe.Storage.Aws.BucketName
+	}
+	if newConfig.Bbe.Packages != nil {
+		currentConfig.Bbe.Packages = newConfig.Bbe.Packages
 	}
 
 	// Write updated config back to file
