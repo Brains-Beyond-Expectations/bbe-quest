@@ -1,8 +1,8 @@
 package cmd
 
 import (
-	"github.com/nicolajv/bbe-quest/constants"
-	"github.com/nicolajv/bbe-quest/services/logger"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/constants"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/services/logger"
 	"github.com/spf13/cobra"
 )
 

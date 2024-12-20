@@ -1,4 +1,4 @@
-module github.com/nicolajv/bbe-quest
+module github.com/Brains-Beyond-Expectations/bbe-quest
 
 go 1.23
 

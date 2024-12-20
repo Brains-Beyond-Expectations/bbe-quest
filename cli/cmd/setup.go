@@ -4,14 +4,14 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/nicolajv/bbe-quest/helper"
-	"github.com/nicolajv/bbe-quest/services/config"
-	"github.com/nicolajv/bbe-quest/services/dependencies"
-	"github.com/nicolajv/bbe-quest/services/ipfinder"
-	"github.com/nicolajv/bbe-quest/services/isocreator"
-	"github.com/nicolajv/bbe-quest/services/logger"
-	"github.com/nicolajv/bbe-quest/services/talos"
-	"github.com/nicolajv/bbe-quest/ui"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/helper"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/services/config"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/services/dependencies"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/services/imagecreator"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/services/ipfinder"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/services/logger"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/services/talos"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -59,15 +59,34 @@ var setupCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		isoCreation(workingDirectory)
-
-		_, err = ui.CreateSelect("Please use balenaEtcher to flash the ISO to USB", []string{"Done"})
+		answer, err = ui.CreateSelect("What type of device are you setting up?", []string{"Intel NUC", "Raspberry Pi"})
 		if err != nil {
 			logger.Error("Error while creating select", err)
 			os.Exit(1)
 		}
 
-		_, err = ui.CreateSelect("Please insert the USB device into your new node and boot from it", []string{"Done"})
+		nodeType := imagecreator.IntelNuc
+		if answer == "Raspberry Pi" {
+			nodeType = imagecreator.RaspberryPi
+		}
+
+		imageCreation(workingDirectory, nodeType)
+
+		firstMessage := "Please use balenaEtcher to flash the .iso to your USB device"
+		secondMessage := "Please insert the USB device into your new node and boot from it"
+
+		if nodeType.ImagerType == "rpi_generic" {
+			firstMessage = "Please use balenaEtcher to flash the .xz to your SD card"
+			secondMessage = "Please insert the SD card into your new node and boot from it"
+		}
+
+		_, err = ui.CreateSelect(firstMessage, []string{"Done"})
+		if err != nil {
+			logger.Error("Error while creating select", err)
+			os.Exit(1)
+		}
+
+		_, err = ui.CreateSelect(secondMessage, []string{"Done"})
 		if err != nil {
 			logger.Error("Error while creating select", err)
 			os.Exit(1)
@@ -172,33 +191,29 @@ var setupCmd = &cobra.Command{
 	},
 }
 
-func isoCreation(workingDirectory string) {
-	isoDirectory := fmt.Sprintf("%s/_out", workingDirectory)
+func imageCreation(workingDirectory string, nodeType imagecreator.NodeType) {
+	imageDirectory := fmt.Sprintf("%s/_out", workingDirectory)
+	resultFilePath := fmt.Sprintf("%s/%s", imageDirectory, nodeType.OutputFile)
 
-	createIso := true
-
-	_, isoExists := helper.CheckIfFileExists(fmt.Sprintf("%s/metal-amd64.iso", isoDirectory))
-	if isoExists {
-		result, err := ui.CreateSelect("An ISO already exists, would you like to recreate it?", []string{"Yes", "No"})
+	_, imageExists := helper.CheckIfFileExists(resultFilePath)
+	if imageExists {
+		result, err := ui.CreateSelect("An image already exists, would you like to recreate it?", []string{"Yes", "No"})
 		if err != nil {
 			logger.Error("Error while creating select", err)
 			os.Exit(1)
 		}
 
 		if result == "No" {
-			createIso = false
+			return
 		}
 	}
 
-	if createIso {
-		logger.Info("Creating ISO")
-		result, err := isocreator.CreateIso(isoDirectory, []string{"intel-ucode", "gvisor", "iscsi-tools"})
-		if err != nil {
-			os.Exit(1)
-		}
-		logger.Info(result)
+	logger.Info("Creating image")
+	result, err := imagecreator.CreateImage(nodeType, imageDirectory)
+	if err != nil {
+		os.Exit(1)
 	}
-
+	logger.Info(result)
 }
 
 func init() {

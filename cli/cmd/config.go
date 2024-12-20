@@ -3,9 +3,9 @@ package cmd
 import (
 	"os"
 
-	"github.com/nicolajv/bbe-quest/services/config"
-	"github.com/nicolajv/bbe-quest/services/logger"
-	"github.com/nicolajv/bbe-quest/ui"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/services/config"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/services/logger"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/ui"
 	"github.com/spf13/cobra"
 )
 
