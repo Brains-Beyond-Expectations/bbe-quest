@@ -18,12 +18,9 @@ cluster.
 
 ### Requirements
 
-- [Docker](https://docs.docker.com/get-docker/)
-- [crane](https://github.com/google/go-containerregistry/blob/main/cmd/crane/README.md)
 - [balenaEtcher](https://www.balena.io/etcher/)
 - [talosctl](https://www.talos.dev/v1.8/learn-more/talosctl/)
 - [nmap](https://nmap.org/)
-- [yq](https://mikefarah.gitbook.io/yq/)
 
 ### Installing the BBE-Quest CLI
 
@@ -51,5 +48,5 @@ go run main.go <command>
 To run the tests, run:
 
 ```bash
-go test ./...
+make test
 ```

@@ -1,5 +1,14 @@
 repos:
   - repo: https://github.com/commitizen-tools/commitizen
-    rev: v1.17.0
+    rev: v4.2.1
     hooks:
       - id: commitizen
+
+  - repo: local
+    hooks:
+      - id: run-make-test
+        name: Run make test
+        entry: make -C cli test
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
