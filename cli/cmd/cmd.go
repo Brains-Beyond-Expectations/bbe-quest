@@ -3,7 +3,7 @@ package cmd
 import (
 	"os"
 
-	"github.com/Brains-Beyond-Expectations/bbe-quest/services/logger"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/misc/logger"
 	"github.com/spf13/cobra"
 )
 
@@ -16,7 +16,7 @@ var rootCmd = &cobra.Command{
 	},
 }
 
-func Execute() {
+func Execute() { // coverage-ignore
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(0)
 	}

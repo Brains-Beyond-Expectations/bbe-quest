@@ -3,15 +3,22 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"strings"
+	"time"
 
-	"github.com/Brains-Beyond-Expectations/bbe-quest/helper"
-	"github.com/Brains-Beyond-Expectations/bbe-quest/services/config"
-	"github.com/Brains-Beyond-Expectations/bbe-quest/services/dependencies"
-	"github.com/Brains-Beyond-Expectations/bbe-quest/services/imagecreator"
-	"github.com/Brains-Beyond-Expectations/bbe-quest/services/ipfinder"
-	"github.com/Brains-Beyond-Expectations/bbe-quest/services/logger"
-	"github.com/Brains-Beyond-Expectations/bbe-quest/services/talos"
-	"github.com/Brains-Beyond-Expectations/bbe-quest/ui"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/constants"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/interfaces"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/misc/logger"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/models"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/services/config_service"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/services/dependency_service"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/services/helper_service"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/services/image_service"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/services/ipfinder_service"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/services/talos_service"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/services/ui_service"
+	"github.com/briandowns/spinner"
+	"github.com/lucasepe/codename"
 	"github.com/spf13/cobra"
 )
 
@@ -20,200 +27,317 @@ var setupCmd = &cobra.Command{
 	Aliases: []string{},
 	Short:   "Guides you through a BBE-Quest node setup",
 	Args:    cobra.ExactArgs(0),
-	Run: func(cmd *cobra.Command, args []string) {
-		bbeConfig, err := config.GetBbeConfig()
+	Run: func(cmd *cobra.Command, args []string) { // coverage-ignore
+		helperService := helper_service.HelperService{}
+		dependencyService := dependency_service.DependencyService{}
+		talosService := talos_service.TalosService{}
+		ipFinderService := ipfinder_service.IpFinderService{}
+		uiService := ui_service.UiService{}
+		configService := config_service.ConfigService{}
+		imageService := image_service.ImageService{}
+
+		err := setupCommand(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService)
 		if err != nil {
-			bbeConfig = promptForConfigStorage()
-		}
-
-		if bbeConfig.Bbe.Storage.Type == "aws" {
-			err := config.SyncConfigsWithAws(bbeConfig)
-			if err != nil {
-				logger.Error("Error while syncing config with AWS", err)
-				os.Exit(1)
-			}
-		}
-
-		// Get current local path
-		workingDirectory, err := os.Getwd()
-		if err != nil {
-			logger.Error("Error while getting current working directory", err)
+			logger.Error("", err)
 			os.Exit(1)
-		}
-
-		if !dependencies.VerifyDependencies() {
-			logger.Error("Error while verifying dependencies", nil)
-			os.Exit(1)
-		}
-
-		answer, err := ui.CreateSelect("Is this the first node in your cluster?", []string{"Yes", "No"})
-		if err != nil {
-			logger.Error("Error while creating select", err)
-			os.Exit(1)
-		}
-		createControlPlane := answer == "Yes"
-
-		configExists := config.CheckForTalosConfigs()
-		if !configExists && !createControlPlane {
-			logger.Error("No config files found while trying to enroll new node in exsting cluster, please create your first node first", nil)
-			os.Exit(1)
-		}
-
-		answer, err = ui.CreateSelect("What type of device are you setting up?", []string{"Intel NUC", "Raspberry Pi"})
-		if err != nil {
-			logger.Error("Error while creating select", err)
-			os.Exit(1)
-		}
-
-		nodeType := imagecreator.IntelNuc
-		if answer == "Raspberry Pi" {
-			nodeType = imagecreator.RaspberryPi
-		}
-
-		imageCreation(workingDirectory, nodeType)
-
-		firstMessage := "Please use balenaEtcher to flash the .iso to your USB device"
-		secondMessage := "Please insert the USB device into your new node and boot from it"
-
-		if nodeType.ImagerType == "rpi_generic" {
-			firstMessage = "Please use balenaEtcher to flash the .xz to your SD card"
-			secondMessage = "Please insert the SD card into your new node and boot from it"
-		}
-
-		_, err = ui.CreateSelect(firstMessage, []string{"Done"})
-		if err != nil {
-			logger.Error("Error while creating select", err)
-			os.Exit(1)
-		}
-
-		_, err = ui.CreateSelect(secondMessage, []string{"Done"})
-		if err != nil {
-			logger.Error("Error while creating select", err)
-			os.Exit(1)
-		}
-
-		ips, err := ipfinder.LocateDevice()
-		if err != nil {
-			logger.Error("Error while attempting to locate device", err)
-			os.Exit(1)
-		}
-
-		if len(ips) == 0 {
-			logger.Info("No new Talos devices found")
-			os.Exit(0)
-		}
-
-		if createControlPlane {
-			if len(ips) > 1 {
-				logger.Info("More than one device found, please only set up one device at a time when creating your first node")
-				os.Exit(0)
-			}
-
-			if !configExists {
-				clusterName, err := ui.CreateInput("Please enter what you want to name your cluster")
-				if err != nil {
-					logger.Error("Error while creating input", err)
-					os.Exit(1)
-				}
-
-				err = talos.GenerateConfig(ips[0], clusterName)
-				if err != nil {
-					logger.Error("Error while generating config", err)
-					os.Exit(1)
-				}
-			}
-		}
-
-		controlPlaneIp, err := talos.GetControlPlaneIp("controlplane.yaml")
-		if err != nil {
-			logger.Error("Error while getting control plane IP", err)
-			os.Exit(1)
-		}
-
-		for _, ip := range ips {
-			nodeConfigFile := "worker.yaml"
-			if createControlPlane {
-				nodeConfigFile = "controlplane.yaml"
-			}
-
-			disks, err := talos.GetDisks(ip)
-			if err != nil {
-				logger.Error("Error while getting disks", err)
-				os.Exit(1)
-			}
-
-			disk, err := ui.CreateSelect(fmt.Sprintf("Please select the disk to install Talos on for %s", ip), disks)
-			if err != nil {
-				logger.Error("Error while creating select", err)
-				os.Exit(1)
-			}
-
-			err = talos.ModifyConfigDisk(nodeConfigFile, disk)
-			if err != nil {
-				logger.Error("Error while modifying config disk", err)
-				os.Exit(1)
-			}
-
-			err = talos.JoinCluster(ip, nodeConfigFile)
-			if err != nil {
-				logger.Error("Error while joining cluster", err)
-				os.Exit(1)
-			}
-
-			if createControlPlane {
-				err := talos.BootstrapCluster(ip, controlPlaneIp)
-				if err != nil {
-					logger.Error("Error while bootstrapping cluster", err)
-					os.Exit(1)
-				}
-
-				logger.Infof("Cluster bootstrapping successfully requested at %s", ip)
-			}
-
-			err = talos.VerifyNodeHealth(ip, controlPlaneIp)
-			if err != nil {
-				logger.Error("Error while verifying node health", err)
-				os.Exit(1)
-			}
-
-			if createControlPlane {
-				err := talos.DownloadKubeConfig(ip, controlPlaneIp)
-				if err != nil {
-					logger.Error("Error while downloading kubeconfig", err)
-					os.Exit(1)
-				}
-
-				logger.Infof("Control plane node %s successfully set up", ip)
-			} else {
-				logger.Infof("Worker node %s successfully set up", ip)
-			}
 		}
 	},
 }
 
-func imageCreation(workingDirectory string, nodeType imagecreator.NodeType) {
+func setupCommand(helperService interfaces.HelperServiceInterface, dependencyService interfaces.DependencyServiceInterface, talosService interfaces.TalosServiceInterface, ipFinderService interfaces.IpFinderServiceInterface, uiService interfaces.UiServiceInterface, configService interfaces.ConfigServiceInterface, imageService interfaces.ImageServiceInterface) error {
+	rng, rngError := codename.DefaultRNG()
+
+	spinner := spinner.New(spinner.CharSets[43], 100*time.Millisecond)
+
+	bbeConfig, err := configService.GetBbeConfig(helperService)
+	if err != nil {
+		bbeConfig, err = getOrGenerateConfig(helperService, uiService, configService)
+		if err != nil {
+			return fmt.Errorf("Error while generating BBE config: %w", err)
+		}
+	}
+
+	if bbeConfig.Bbe.Storage.Type == "aws" {
+		err := configService.SyncConfigsWithAws(helperService, bbeConfig)
+		if err != nil {
+			return fmt.Errorf("Error while syncing config with AWS: %w", err)
+		}
+	}
+
+	// Get current local path
+	workingDirectory, err := os.Getwd()
+	if err != nil { // coverage-ignore
+		panic(err)
+	}
+
+	if !dependencyService.VerifyDependencies() {
+		return fmt.Errorf("Error while verifying dependencies")
+	}
+
+	answer, err := uiService.CreateSelect("Is this the first node in your cluster?", []string{"Yes", "No"})
+	if err != nil { // coverage-ignore
+		panic(err)
+	}
+	createControlPlane := answer == "Yes"
+
+	configExists := configService.CheckForTalosConfigs(helperService)
+	if !configExists && !createControlPlane {
+		return fmt.Errorf("No config files found while trying to enroll new node in exsting cluster, please create your first node first")
+	}
+
+	answer, err = uiService.CreateSelect("What type of device are you setting up?", []string{"Intel NUC", "Raspberry Pi 4 (or older)"})
+	if err != nil { // coverage-ignore
+		panic(err)
+	}
+
+	nodeType := image_service.IntelNuc
+	if answer == "Raspberry Pi 4 (or older)" {
+		nodeType = image_service.RaspberryPi
+	}
+
+	err = imageCreation(helperService, uiService, imageService, workingDirectory, nodeType)
+	if err != nil {
+		return fmt.Errorf("Error while downloading image: %w", err)
+	}
+
+	firstMessage := "Please use balenaEtcher to flash the .iso to your USB device"
+	secondMessage := "Please insert the USB device into your new node and boot from it"
+
+	if nodeType.ImagerType == "rpi_generic" {
+		firstMessage = "Please use balenaEtcher to flash the .xz to your SD card"
+		secondMessage = "Please insert the SD card into your new node and boot from it"
+	}
+
+	_, err = uiService.CreateSelect(firstMessage, []string{"Done"})
+	if err != nil { // coverage-ignore
+		panic(err)
+	}
+
+	_, err = uiService.CreateSelect(secondMessage, []string{"Done"})
+	if err != nil { // coverage-ignore
+		panic(err)
+	}
+
+	spinner.Start()
+	gatewayIpSuggestion, err := ipFinderService.GetGatewayIp(helperService)
+	if err != nil {
+		var result string
+		title := "Gateway IP not found, please enter the IP of the network you want to scan:"
+		for {
+			var err error
+			result, err = uiService.CreateInput(title, "")
+			if err != nil {
+				panic(err)
+			}
+
+			if helperService.IsValidIp(result) {
+				gatewayIpSuggestion = result
+				break
+			}
+			title = "Invalid Gateway IP, please enter a valid IP:"
+		}
+	}
+
+	ips, err := ipFinderService.LocateDevice(helperService, talosService, gatewayIpSuggestion)
+	if err != nil {
+		return fmt.Errorf("Error while attempting to locate device: %w", err)
+	}
+	spinner.Stop()
+
+	logger.Infof("Found %d Talos device(s)", len(ips))
+
+	if len(ips) > 1 {
+		return fmt.Errorf("More than one node found, please make sure there is only 1 Talos node in maintanance mode.")
+	}
+	originalIp := ips[0]
+
+	///////////////////////////////////////////////////////////////////////////////// QUESTIONS ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	chosenIp, err := uiService.CreateInput("Please choose an ip for the new node", originalIp)
+	if err != nil { // coverage-ignore
+		panic(err)
+	}
+
+	logger.Debug("Getting talos disks")
+	disks, err := talosService.GetDisks(helperService, originalIp)
+	if err != nil {
+		return fmt.Errorf("Error while getting disks: %w", err)
+	}
+
+	disk, err := uiService.CreateSelect(fmt.Sprintf("Please select the disk to install Talos on for %s", chosenIp), disks)
+	if err != nil { // coverage-ignore
+		panic(err)
+	}
+	diskSelectionResult := strings.Fields(disk)
+
+	gatewayIp, err := uiService.CreateInput("Please choose the correct gateway ip", gatewayIpSuggestion)
+	if err != nil { // coverage-ignore
+		panic(err)
+	}
+
+	suggestedHostname := "big_brain_entropy_generator"
+	if rngError == nil {
+		suggestedHostname = codename.Generate(rng, 0)
+	}
+
+	hostname, err := uiService.CreateInput("Please select the hostname", suggestedHostname)
+	if err != nil { // coverage-ignore
+		panic(err)
+	}
+
+	var clusterName string
+	var allowSchedulingOnControlPlanes string
+	if createControlPlane {
+		if !configExists {
+			suggestedClusterName := "big_brain_entropy_holder"
+			if rngError == nil {
+				suggestedClusterName = codename.Generate(rng, 0)
+			}
+
+			clusterName, err = uiService.CreateInput("Please enter what you want to name your cluster", suggestedClusterName)
+			if err != nil { // coverage-ignore
+				panic(err)
+			}
+
+			err = talosService.GenerateConfig(helperService, chosenIp, clusterName)
+			if err != nil {
+				return fmt.Errorf("Error while generating config: %w", err)
+			}
+		}
+
+		allowSchedulingOnControlPlanes, err = uiService.CreateSelect("Do you want to allow scheduling on the control plane? This is required if you have only one node.", []string{"Yes", "No"})
+		if err != nil { // coverage-ignore
+			panic(err)
+		}
+
+	}
+	///////////////////////////////////////////////////////////////////////////////// QUESTIONS END ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+	controlPlaneIp, err := talosService.GetControlPlaneIp(helperService, constants.ControlplaneConfigFile)
+	if err != nil {
+		return fmt.Errorf("Error while getting control plane IP: %w", err)
+	}
+
+	nodeConfigFile := constants.WorkerConfigFile
+	if createControlPlane {
+		nodeConfigFile = constants.ControlplaneConfigFile
+	}
+
+	logger.Debug(fmt.Sprintf("Working on the config file: %s", nodeConfigFile))
+
+	err = talosService.ModifyNetworkNodeIp(helperService, nodeConfigFile, chosenIp)
+	if err != nil {
+		return fmt.Errorf("Error while storing the Node IP in file: %w", err)
+	}
+
+	networkInterface, err := talosService.GetNetworkInterface(helperService, originalIp)
+	if err != nil {
+		return fmt.Errorf("Error while getting network interface: %w", err)
+	}
+
+	err = talosService.ModifyNetworkInterface(helperService, nodeConfigFile, networkInterface)
+	if err != nil {
+		return fmt.Errorf("Error while storing the network interface in file: %w", err)
+	}
+
+	err = talosService.ModifyNetworkGateway(helperService, nodeConfigFile, gatewayIp)
+	if err != nil {
+		return fmt.Errorf("Error while storing the Gateway IP in file: %w", err)
+	}
+
+	err = talosService.ModifyNetworkHostname(helperService, nodeConfigFile, hostname)
+	if err != nil {
+		return fmt.Errorf("Error while storing the hostname in file: %w", err)
+	}
+
+	if allowSchedulingOnControlPlanes != "" {
+		scheduleOnControlPlane := false
+		if allowSchedulingOnControlPlanes == "Yes" {
+			scheduleOnControlPlane = true
+		}
+		err = talosService.ModifySchedulingOnControlPlane(helperService, scheduleOnControlPlane)
+		if err != nil {
+			return fmt.Errorf("Error while storing controlplane scheduling in file: %w", err)
+		}
+	}
+
+	spinner.Start()
+	logger.Debug("Modifying talos config disk")
+	err = talosService.ModifyConfigDisk(helperService, nodeConfigFile, diskSelectionResult[0])
+	if err != nil {
+		return fmt.Errorf("Error while modifying config disk: %w", err)
+	}
+
+	logger.Debug("Joining cluster")
+	err = talosService.JoinCluster(helperService, originalIp, nodeConfigFile)
+	if err != nil {
+		return fmt.Errorf("Error while joining cluster: %w", err)
+	}
+
+	if createControlPlane {
+		err := talosService.BootstrapCluster(helperService, chosenIp, controlPlaneIp)
+		if err != nil {
+			return fmt.Errorf("Error while bootstrapping cluster: %w", err)
+		}
+
+		logger.Infof("Cluster bootstrapping successfully requested at %s", chosenIp)
+	}
+
+	err = talosService.VerifyNodeHealth(helperService, chosenIp, controlPlaneIp)
+	if err != nil {
+		return fmt.Errorf("Error while verifying node health: %w", err)
+	}
+
+	if createControlPlane {
+		logger.Debug("Downloading kube config")
+		err := talosService.DownloadKubeConfig(helperService, chosenIp, controlPlaneIp)
+		if err != nil {
+			return fmt.Errorf("Error while downloading kubeconfig: %w", err)
+		}
+
+		logger.Debug("Updating BBE cluster name")
+		err = configService.UpdateBbeClusterName(helperService, clusterName)
+		if err != nil {
+			return fmt.Errorf("Error while updating BBE cluster name: %w", err)
+		}
+
+		logger.Infof("Control plane node %s successfully set up", chosenIp)
+	} else {
+		logger.Infof("Worker node %s successfully set up", chosenIp)
+	}
+	spinner.Stop()
+
+	return nil
+}
+
+func imageCreation(helperService interfaces.HelperServiceInterface, uiService interfaces.UiServiceInterface, imageService interfaces.ImageServiceInterface, workingDirectory string, nodeType models.NodeType) error {
 	imageDirectory := fmt.Sprintf("%s/_out", workingDirectory)
 	resultFilePath := fmt.Sprintf("%s/%s", imageDirectory, nodeType.OutputFile)
+	spinner := spinner.New(spinner.CharSets[43], 100*time.Millisecond)
 
-	_, imageExists := helper.CheckIfFileExists(resultFilePath)
+	_, imageExists := helperService.CheckIfFileExists(resultFilePath)
 	if imageExists {
-		result, err := ui.CreateSelect("An image already exists, would you like to recreate it?", []string{"Yes", "No"})
-		if err != nil {
-			logger.Error("Error while creating select", err)
-			os.Exit(1)
+		result, err := uiService.CreateSelect("An image already exists, would you like to redownload it?", []string{"Yes", "No"})
+		if err != nil { // coverage-ignore
+			panic(err)
 		}
 
 		if result == "No" {
-			return
+			return nil
 		}
 	}
 
-	logger.Info("Creating image")
-	result, err := imagecreator.CreateImage(nodeType, imageDirectory)
+	logger.Debug("Creating image..")
+	spinner.Start()
+
+	result, err := imageService.CreateImage(nodeType, imageDirectory)
 	if err != nil {
-		os.Exit(1)
+		return err
 	}
+
+	spinner.Stop()
 	logger.Info(result)
+
+	return nil
 }
 
 func init() {

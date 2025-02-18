@@ -7,3 +7,4 @@ _out
 controlplane.yaml
 worker.yaml
 talosconfig
+cover.out
