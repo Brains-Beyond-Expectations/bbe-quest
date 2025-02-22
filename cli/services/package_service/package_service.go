@@ -53,7 +53,7 @@ func (packageService PackageService) InstallPackage(pkg models.Package) error {
 				return fmt.Errorf("failed to add helm repository %s: %w", p.PackageRepository.Name, err)
 			}
 
-			cmd = execCommand("helm", "sinstall", pkg.Name, fmt.Sprintf("%s/%s", p.PackageRepository.Name, p.HelmChart),
+			cmd = execCommand("helm", "install", pkg.Name, fmt.Sprintf("%s/%s", p.PackageRepository.Name, p.HelmChart),
 				"--version", p.HelmChartVersion,
 				"--namespace", pkg.Name,
 				"--create-namespace")
