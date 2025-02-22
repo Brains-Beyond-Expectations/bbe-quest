@@ -116,6 +116,15 @@ func (config ConfigService) UpdateBbePackages(helperService interfaces.HelperSer
 func (config ConfigService) writeBbeConfig(helperService interfaces.HelperServiceInterface, bbeConfig *models.BbeConfig) error {
 	fileLocation := fmt.Sprintf("%s/%s", helperService.GetConfigDir(), constants.BbeConfigFile)
 
+	// Filter out any empty packages to avoid writing them to the config file
+	var filteredPackages []models.Package
+	for _, pkg := range bbeConfig.Bbe.Packages {
+		if pkg.Name != "" || pkg.Version != "" {
+			filteredPackages = append(filteredPackages, pkg)
+		}
+	}
+	bbeConfig.Bbe.Packages = filteredPackages
+
 	yamlFile, err := yaml.Marshal(bbeConfig)
 	if err != nil {
 		return err

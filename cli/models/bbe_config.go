@@ -12,6 +12,6 @@ type BbeConfig struct {
 				BucketName string `yaml:"bucket_name,omitempty"`
 			} `yaml:"aws,omitempty"`
 		} `yaml:"storage,omitempty"`
-		Packages []Package `yaml:"packages,omitempty"`
+		Packages []Package `yaml:"packages"`
 	} `yaml:"bbe,omitempty"`
 }
