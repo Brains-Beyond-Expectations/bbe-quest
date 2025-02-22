@@ -3,7 +3,8 @@ package models
 type BbeConfig struct {
 	Bbe struct {
 		Cluster struct {
-			Name string `yaml:"name,omitempty"`
+			Name    string `yaml:"name,omitempty"`
+			Context string `yaml:"context,omitempty"`
 		} `yaml:"cluster,omitempty"`
 		Storage struct {
 			Type string `yaml:"type,omitempty"` // "local" or "aws"

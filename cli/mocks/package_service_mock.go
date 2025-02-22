@@ -14,12 +14,12 @@ func (m *MockPackageService) GetAll() []models.Package {
 	return args.Get(0).([]models.Package)
 }
 
-func (m *MockPackageService) InstallPackage(pkg models.Package) error {
+func (m *MockPackageService) InstallPackage(pkg models.Package, bbeConfig models.BbeConfig) error {
 	args := m.Called(pkg)
 	return args.Error(0)
 }
 
-func (m *MockPackageService) UninstallPackage(pkg models.Package) error {
+func (m *MockPackageService) UninstallPackage(pkg models.Package, bbeConfig models.BbeConfig) error {
 	args := m.Called(pkg)
 	return args.Error(0)
 }

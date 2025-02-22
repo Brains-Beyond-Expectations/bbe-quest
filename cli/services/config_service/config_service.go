@@ -75,6 +75,7 @@ func (config ConfigService) UpdateBbeClusterName(helperService interfaces.Helper
 	}
 
 	bbeConfig.Bbe.Cluster.Name = clusterName
+	bbeConfig.Bbe.Cluster.Context = fmt.Sprintf("admin@%s", clusterName)
 
 	return config.writeBbeConfig(helperService, bbeConfig)
 }
