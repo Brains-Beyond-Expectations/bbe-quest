@@ -33,7 +33,7 @@ func Test_Ping_Succeeds_ReturnsFalseIf_MachineAlreadyInitialized(t *testing.T) {
 	timesCalled := 0
 	execCommand = func(_ string, _ ...string) *exec.Cmd {
 		timesCalled++
-		// Initial command to check for disks will succeed, but second command will also succeed, ie. machine already initialized
+		// Initial command to check for disks will succeed and second command will also succeed, ie. machine already initialized
 		return exec.Command("true")
 	}
 
