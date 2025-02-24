@@ -1,6 +1,6 @@
 package models
 
 type Package struct {
-	Name    string `yaml:"name"`
-	Version string `yaml:"version"`
+	Name    string `yaml:"name,omitempty"`
+	Version string `yaml:"version,omitempty"`
 }

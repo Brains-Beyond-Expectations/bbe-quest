@@ -45,7 +45,7 @@ func (packageService PackageService) GetAll() []models.Package {
 	return packageList
 }
 
-func (packageService PackageService) InstallPackage(pkg models.Package) error {
+func (packageService PackageService) InstallPackage(pkg models.Package, bbeConfig models.BbeConfig) error {
 	for _, p := range packages {
 		if p.Package.Name == pkg.Name {
 			cmd := execCommand("helm", "repo", "add", p.PackageRepository.Name, p.PackageRepository.RepositoryUrl)
@@ -56,7 +56,8 @@ func (packageService PackageService) InstallPackage(pkg models.Package) error {
 			cmd = execCommand("helm", "install", pkg.Name, fmt.Sprintf("%s/%s", p.PackageRepository.Name, p.HelmChart),
 				"--version", p.HelmChartVersion,
 				"--namespace", pkg.Name,
-				"--create-namespace")
+				"--create-namespace",
+				"--kube-context", bbeConfig.Bbe.Cluster.Context)
 			if err := cmd.Run(); err != nil {
 				return fmt.Errorf("failed to install helm package %s: %w", pkg.Name, err)
 			}
@@ -67,11 +68,12 @@ func (packageService PackageService) InstallPackage(pkg models.Package) error {
 	return fmt.Errorf("package %s not found", pkg.Name)
 }
 
-func (packageService PackageService) UninstallPackage(pkg models.Package) error {
+func (packageService PackageService) UninstallPackage(pkg models.Package, bbeConfig models.BbeConfig) error {
 	for _, p := range packages {
 		if p.Package.Name == pkg.Name {
 			cmd := execCommand("helm", "uninstall", pkg.Name,
-				"--namespace", pkg.Name)
+				"--namespace", pkg.Name,
+				"--kube-context", bbeConfig.Bbe.Cluster.Context)
 			if err := cmd.Run(); err != nil {
 				return fmt.Errorf("failed to uninstall helm package %s: %w", pkg.Name, err)
 			}

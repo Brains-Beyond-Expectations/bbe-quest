@@ -56,15 +56,15 @@ func installCommand(helperService interfaces.HelperServiceInterface, uiService i
 
 	packagesToInstall, packagesToUninstall := diffPackages(allPackages, chosenPackages)
 
-	updatedBbeConfig := &models.BbeConfig{}
+	updatedBbeConfig := *bbeConfig
 	updatedBbeConfig.Bbe.Packages = bbeConfig.Bbe.Packages
 
-	err = uninstallPackages(helperService, configService, packageService, *updatedBbeConfig, packagesToUninstall)
+	err = uninstallPackages(helperService, configService, packageService, updatedBbeConfig, packagesToUninstall)
 	if err != nil {
 		return fmt.Errorf("Failed to uninstall packages: %w", err)
 	}
 
-	err = installPackages(helperService, configService, packageService, *updatedBbeConfig, packagesToInstall)
+	err = installPackages(helperService, configService, packageService, updatedBbeConfig, packagesToInstall)
 	if err != nil {
 		return fmt.Errorf("Failed to install packages: %w", err)
 	}
@@ -107,7 +107,7 @@ func uninstallPackages(helperService interfaces.HelperServiceInterface, configSe
 	for _, pkg := range uninstalledPackages {
 		for i, existingPkg := range updatedBbeConfig.Bbe.Packages {
 			if existingPkg.Name == pkg.Name {
-				err := packageService.UninstallPackage(pkg)
+				err := packageService.UninstallPackage(pkg, updatedBbeConfig)
 				if err != nil {
 					logger.Error("Failed to uninstall package", err)
 					continue
@@ -127,7 +127,7 @@ func uninstallPackages(helperService interfaces.HelperServiceInterface, configSe
 
 func installPackages(helperService interfaces.HelperServiceInterface, configService interfaces.ConfigServiceInterface, packageService interfaces.PackageServiceInterface, updatedBbeConfig models.BbeConfig, installedPackages []models.Package) error {
 	for _, pkg := range installedPackages {
-		err := packageService.InstallPackage(pkg)
+		err := packageService.InstallPackage(pkg, updatedBbeConfig)
 		if err != nil {
 			return fmt.Errorf("Failed to install package: %w", err)
 		}
