@@ -4,11 +4,28 @@ repos:
     hooks:
       - id: commitizen
 
+  - repo: https://github.com/crate-ci/typos
+    rev: v1.29.7
+    hooks:
+      - id: typos
+        name: "🔍 Code Quality · Check for typos"
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.22.1
+    hooks:
+      - id: gitleaks
+        name: "🔒 Security · Detect hardcoded secrets"
+
+  - repo: https://github.com/mrtazz/checkmake.git
+    rev: 0.2.2
+    hooks:
+      - id: checkmake
+        name: "🐮 Makefile · Lint Makefile"
+
   - repo: local
     hooks:
       - id: run-make-test
-        name: Run make test
+        name: "🧪 Tests ·  Run tests"
         entry: make -C cli test
         language: system
         pass_filenames: false
-        stages: [pre-push]
