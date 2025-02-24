@@ -1,5 +1,7 @@
 # BBE-Quest: Big Brain Energy Quest
 
+[![codecov](https://codecov.io/gh/Brains-Beyond-Expectations/bbe-quest/graph/badge.svg?token=Q7M8SJHDDW)](https://codecov.io/gh/Brains-Beyond-Expectations/bbe-quest)
+
 ![BBE-Quest Banner](./assets/banner.webp)
 
 BBE-Quest is a CLI tool that helps you easily set up a Kubernetes cluster using

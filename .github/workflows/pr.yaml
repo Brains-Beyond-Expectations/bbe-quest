@@ -34,49 +34,14 @@ jobs:
             cli/go.sum
 
       - name: Run tests with coverage
-        id: test
-        continue-on-error: true
-        run: |
-          cd cli
-          pull_request_number=$(jq --raw-output .pull_request.number "$GITHUB_EVENT_PATH")
-          echo "pull_request_number=$pull_request_number" >> $GITHUB_OUTPUT
-          make GHA=true test
+        run: go test -race -coverprofile=coverage.out -covermode=atomic
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Run build
         run: |
           cd cli
           go build
-
-      - name: Generate a token for Brainz-Bot
-        id: generate-token
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ secrets.BRAINZ_BOT_ID }}
-          private-key: ${{ secrets.BRAINZ_BOT_PRIVATE_KEY }}
-
-      - name: Check for pre-existing PR comment
-        uses: peter-evans/find-comment@v3
-        continue-on-error: true
-        id: find-comment
-        with:
-          issue-number: ${{ steps.test.outputs.pull_request_number }}
-          comment-author: "brainz-bot[bot]"
-          body-includes: ${{ env.COVERAGE_COMMENT_TEXT }}
-
-      - name: Comment coverage report
-        uses: peter-evans/create-or-update-comment@v4
-        with:
-          token: ${{ steps.generate-token.outputs.token }}
-          issue-number: ${{ steps.test.outputs.pull_request_number }}
-          comment-id: ${{ steps.find-comment.outputs.comment-id }}
-          edit-mode: replace
-          body: |
-            ${{ env.COVERAGE_COMMENT_TEXT }}
-            ```
-            ${{ fromJSON(steps.test.outputs.report) }}
-            ```
-      - name: Check coverage
-        if: steps.test.outcome == 'failure'
-        shell: bash
-        run: |
-          exit 1
