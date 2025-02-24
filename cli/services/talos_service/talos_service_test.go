@@ -14,15 +14,52 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-func Test_Ping_Succeeds_ReturnsFalseIfTalosMachineInitialized(t *testing.T) {
+func Test_Ping_Succeeds_ReturnsFalseIf_NotATalosMachine(t *testing.T) {
+	timesCalled := 0
 	execCommand = func(_ string, _ ...string) *exec.Cmd {
-		return exec.Command("echo")
+		timesCalled++
+		// Initial command to check for disks will fail, ie. not a Talos machine
+		return exec.Command("false")
 	}
 
 	talosService := TalosService{}
 	result := talosService.Ping("127.0.0.1")
 
 	assert.False(t, result)
+	assert.Equal(t, 1, timesCalled)
+}
+
+func Test_Ping_Succeeds_ReturnsFalseIf_MachineAlreadyInitialized(t *testing.T) {
+	timesCalled := 0
+	execCommand = func(_ string, _ ...string) *exec.Cmd {
+		timesCalled++
+		// Initial command to check for disks will succeed and second command will also succeed, ie. machine already initialized
+		return exec.Command("true")
+	}
+
+	talosService := TalosService{}
+	result := talosService.Ping("127.0.0.1")
+
+	assert.False(t, result)
+	assert.Equal(t, 2, timesCalled)
+}
+
+func Test_Ping_Succeeds_ReturnsTrueIf_TalosMachineFound(t *testing.T) {
+	timesCalled := 0
+	execCommand = func(_ string, _ ...string) *exec.Cmd {
+		// Initial command to check for disks will succeed, but second command will fail, ie. machine not initialized
+		timesCalled++
+		if timesCalled == 2 {
+			return exec.Command("false")
+		}
+		return exec.Command("true")
+	}
+
+	talosService := TalosService{}
+	result := talosService.Ping("127.0.0.1")
+
+	assert.True(t, result)
+	assert.Equal(t, 2, timesCalled)
 }
 
 func Test_GenerateConfig_Succeeds(t *testing.T) {
