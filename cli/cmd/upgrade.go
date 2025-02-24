@@ -64,11 +64,7 @@ func upgradeCommand(helperService interfaces.HelperServiceInterface, uiService i
 							return err
 						}
 
-						if result == "Yes" {
-							upgrade = true
-						} else {
-							upgrade = false
-						}
+						upgrade = result == "Yes"
 					}
 					if upgrade {
 						err := packageService.UpgradePackage(pkg, *bbeConfig)
