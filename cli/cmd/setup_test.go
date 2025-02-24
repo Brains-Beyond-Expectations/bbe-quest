@@ -136,6 +136,24 @@ func Test_setupCommand_Succeeds_GeneratesAwsConfig(t *testing.T) {
 	configService.AssertNumberOfCalls(t, "UpdateBbeClusterName", 1)
 }
 
+func Test_setupCommand_Fails_WithNoNodeFound(t *testing.T) {
+	helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp := initSetupTests()
+
+	ipFinderService.On("LocateDevice", helperService, talosService, gatewayIp).Return([]string{}, nil)
+
+	mockSuccessfulSetupFlow(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp, true)
+
+	err := setupCommand(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService)
+
+	assert.NotNil(t, err)
+	helperService.AssertNumberOfCalls(t, "IsValidIp", 0)
+	imageService.AssertNumberOfCalls(t, "CreateImage", 1)
+	talosService.AssertNumberOfCalls(t, "GetDisks", 0)
+	configService.AssertNumberOfCalls(t, "GenerateBbeConfig", 0)
+	configService.AssertNumberOfCalls(t, "SyncConfigsWithAws", 0)
+	configService.AssertNumberOfCalls(t, "UpdateBbeClusterName", 0)
+}
+
 func Test_setupCommand_Fails_WithMoreThanOneNodeFound(t *testing.T) {
 	helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp := initSetupTests()
 

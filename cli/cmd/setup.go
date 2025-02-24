@@ -82,7 +82,7 @@ func setupCommand(helperService interfaces.HelperServiceInterface, dependencySer
 
 	configExists := configService.CheckForTalosConfigs(helperService)
 	if !configExists && !createControlPlane {
-		return fmt.Errorf("No config files found while trying to enroll new node in exsting cluster, please create your first node first")
+		return fmt.Errorf("No config files found while trying to enroll new node in existing cluster, please create your first node first")
 	}
 
 	answer, err = uiService.CreateSelect("What type of device are you setting up?", []string{"Intel NUC", "Raspberry Pi 4 (or older)"})
@@ -147,8 +147,13 @@ func setupCommand(helperService interfaces.HelperServiceInterface, dependencySer
 	logger.Infof("Found %d Talos device(s)", len(ips))
 
 	if len(ips) > 1 {
-		return fmt.Errorf("More than one node found, please make sure there is only 1 Talos node in maintanance mode.")
+		return fmt.Errorf("More than one node found, please make sure there is only 1 Talos node in maintenance mode.")
 	}
+
+	if len(ips) == 0 {
+		return fmt.Errorf("No node found, please make sure there is only 1 Talos node in maintenance mode.")
+	}
+
 	originalIp := ips[0]
 
 	///////////////////////////////////////////////////////////////////////////////// QUESTIONS ///////////////////////////////////////////////////////////////////////////////////////////////////////////////

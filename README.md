@@ -39,7 +39,7 @@ installed. Change directory to the cli folder:
 cd cli
 ```
 
-Then to run a CLI command run:
+To call a CLI command, run:
 
 ```bash
 go run main.go <command>
