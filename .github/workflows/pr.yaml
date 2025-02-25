@@ -36,8 +36,7 @@ jobs:
       - name: Run tests with coverage
         run: |
           cd cli
-          go test -race -coverprofile=coverage.out -covermode=atomic
-
+          make test
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5
@@ -47,4 +46,4 @@ jobs:
       - name: Run build
         run: |
           cd cli
-          go build
+          make build
