@@ -90,9 +90,14 @@ func setupCommand(helperService interfaces.HelperServiceInterface, dependencySer
 		panic(err)
 	}
 
-	nodeType := image_service.IntelNuc
-	if answer == "Raspberry Pi 4 (or older)" {
+	var nodeType models.NodeType
+	switch answer {
+	case "Intel NUC":
+		nodeType = image_service.IntelNuc
+	case "Raspberry Pi 4 (or older)":
 		nodeType = image_service.RaspberryPi
+	default:
+		panic("Invalid node type")
 	}
 
 	err = imageCreation(helperService, uiService, imageService, workingDirectory, nodeType)
@@ -255,10 +260,7 @@ func setupCommand(helperService interfaces.HelperServiceInterface, dependencySer
 	}
 
 	if allowSchedulingOnControlPlanes != "" {
-		scheduleOnControlPlane := false
-		if allowSchedulingOnControlPlanes == "Yes" {
-			scheduleOnControlPlane = true
-		}
+		scheduleOnControlPlane := allowSchedulingOnControlPlanes == "Yes"
 		err = talosService.ModifySchedulingOnControlPlane(helperService, scheduleOnControlPlane)
 		if err != nil {
 			return fmt.Errorf("Error while storing controlplane scheduling in file: %w", err)

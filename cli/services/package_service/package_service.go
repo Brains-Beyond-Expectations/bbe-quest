@@ -25,14 +25,26 @@ var packages = []models.BbePackage{
 		HelmChartVersion:  "0.1.3",
 		PackageRepository: bbeRepository,
 	},
+	{
+		Package: models.Package{
+			Name:    "ingress-nginx",
+			Version: "4.12.0",
+		},
+		HelmChart:        "ingress-nginx",
+		HelmChartVersion: "4.12.0",
+		PackageRepository: models.BbePackageRepository{
+			Name:          "ingress-nginx",
+			RepositoryUrl: "https://kubernetes.github.io/ingress-nginx",
+		},
+	},
 }
 
 var execCommand = exec.Command
 
 type PackagesServiceInterface interface {
 	GetAll() []models.Package
-	InstallPackage(pkg models.Package) error
-	UninstallPackage(pkg models.Package) error
+	InstallPackage(pkg models.Package, bbeConfig models.BbeConfig) error
+	UninstallPackage(pkg models.Package, bbeConfig models.BbeConfig) error
 }
 
 type PackagesService struct{}
@@ -48,24 +60,29 @@ func (packageService PackageService) GetAll() []models.Package {
 func (packageService PackageService) InstallPackage(pkg models.Package, bbeConfig models.BbeConfig) error {
 	for _, p := range packages {
 		if p.Package.Name == pkg.Name {
-			cmd := execCommand("helm", "repo", "add", p.PackageRepository.Name, p.PackageRepository.RepositoryUrl)
-			if err := cmd.Run(); err != nil {
-				return fmt.Errorf("failed to add helm repository %s: %w", p.PackageRepository.Name, err)
+			if !IsPackageInstalled(pkg) {
+				cmd := execCommand("helm", "repo", "add", p.PackageRepository.Name, p.PackageRepository.RepositoryUrl)
+				if err := cmd.Run(); err != nil {
+					return fmt.Errorf("failed to add helm repository %s: %w", p.PackageRepository.Name, err)
+				}
+
+				cmd = execCommand("helm", "install", pkg.Name, fmt.Sprintf("%s/%s", p.PackageRepository.Name, p.HelmChart),
+					"--version", p.HelmChartVersion,
+					"--namespace", pkg.Name,
+					"--create-namespace",
+					"--kube-context", bbeConfig.Bbe.Cluster.Context)
+				if err := cmd.Run(); err != nil {
+					return fmt.Errorf("failed to install helm package %s: %w", pkg.Name, err)
+				}
+				logger.Info(fmt.Sprintf("Installed package %s", pkg.Name))
+				return nil
 			}
 
-			cmd = execCommand("helm", "install", pkg.Name, fmt.Sprintf("%s/%s", p.PackageRepository.Name, p.HelmChart),
-				"--version", p.HelmChartVersion,
-				"--namespace", pkg.Name,
-				"--create-namespace",
-				"--kube-context", bbeConfig.Bbe.Cluster.Context)
-			if err := cmd.Run(); err != nil {
-				return fmt.Errorf("failed to install helm package %s: %w", pkg.Name, err)
-			}
-			logger.Info(fmt.Sprintf("Installed package %s", pkg.Name))
 			return nil
 		}
+		return fmt.Errorf("Package `%s` not found", pkg.Name)
 	}
-	return fmt.Errorf("package %s not found", pkg.Name)
+	return nil
 }
 
 func (packageService PackageService) UninstallPackage(pkg models.Package, bbeConfig models.BbeConfig) error {
@@ -81,5 +98,14 @@ func (packageService PackageService) UninstallPackage(pkg models.Package, bbeCon
 			return nil
 		}
 	}
-	return fmt.Errorf("package %s not found", pkg.Name)
+	return fmt.Errorf("Package `%s` not found", pkg.Name)
+}
+
+func IsPackageInstalled(pkg models.Package) bool {
+	cmd := execCommand("helm", "status", pkg.Name, "--namespace", pkg.Name)
+	if err := cmd.Run(); err != nil {
+		return false
+	}
+
+	return true
 }
