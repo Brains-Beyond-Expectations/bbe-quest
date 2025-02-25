@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/Brains-Beyond-Expectations/bbe-quest/misc/logger"
-	"github.com/Brains-Beyond-Expectations/bbe-quest/models"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/misc/logger"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/models"
 )
 
 var httpGet = http.Get

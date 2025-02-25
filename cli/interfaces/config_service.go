@@ -1,7 +1,7 @@
 package interfaces
 
 import (
-	"github.com/Brains-Beyond-Expectations/bbe-quest/models"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/models"
 )
 
 type ConfigServiceInterface interface {

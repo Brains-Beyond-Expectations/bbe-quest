@@ -5,8 +5,8 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/Brains-Beyond-Expectations/bbe-quest/interfaces"
-	"github.com/Brains-Beyond-Expectations/bbe-quest/misc/logger"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/interfaces"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/misc/logger"
 )
 
 var execCommand = exec.Command

@@ -5,12 +5,12 @@ import (
 	"os/exec"
 	"testing"
 
-	"github.com/Brains-Beyond-Expectations/bbe-quest/mocks"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
 
-func Test_Locate_Device_Succesfully(t *testing.T) {
+func Test_Locate_Device_Successfully(t *testing.T) {
 	ipFinderService := IpFinderService{}
 
 	helperMock := new(mocks.MockHelperService)

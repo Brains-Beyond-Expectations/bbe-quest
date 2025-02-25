@@ -1,6 +1,6 @@
 package interfaces
 
-import "github.com/Brains-Beyond-Expectations/bbe-quest/models"
+import "github.com/Brains-Beyond-Expectations/bbe-quest/cli/models"
 
 type PackageServiceInterface interface {
 	GetAll() []models.Package
