@@ -34,7 +34,10 @@ jobs:
             cli/go.sum
 
       - name: Run tests with coverage
-        run: go test -race -coverprofile=coverage.out -covermode=atomic
+        run: |
+          cd cli
+          go test -race -coverprofile=coverage.out -covermode=atomic
+
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5
