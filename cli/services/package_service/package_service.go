@@ -82,7 +82,8 @@ func (packageService PackageService) InstallPackage(pkg models.Package, bbeConfi
 		}
 		return fmt.Errorf("Package `%s` not found", pkg.Name)
 	}
-	return nil
+
+	panic("Packages list is empty, something went very wrong")
 }
 
 func (packageService PackageService) UninstallPackage(pkg models.Package, bbeConfig models.BbeConfig) error {
