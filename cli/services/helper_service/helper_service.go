@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Brains-Beyond-Expectations/bbe-quest/misc/logger"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/misc/logger"
 )
 
 var configDir string = ".bbe"

@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/Brains-Beyond-Expectations/bbe-quest/interfaces"
-	"github.com/Brains-Beyond-Expectations/bbe-quest/misc/logger"
-	"github.com/Brains-Beyond-Expectations/bbe-quest/models"
-	"github.com/Brains-Beyond-Expectations/bbe-quest/services/config_service"
-	"github.com/Brains-Beyond-Expectations/bbe-quest/services/helper_service"
-	"github.com/Brains-Beyond-Expectations/bbe-quest/services/ui_service"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/interfaces"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/misc/logger"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/models"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/services/config_service"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/services/helper_service"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/services/ui_service"
 	"github.com/spf13/cobra"
 )
 

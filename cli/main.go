@@ -1,8 +1,8 @@
 package main
 
 import (
-	"github.com/Brains-Beyond-Expectations/bbe-quest/cmd"
-	"github.com/Brains-Beyond-Expectations/bbe-quest/misc/logger"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/cmd"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/misc/logger"
 )
 
 func main() { // coverage-ignore

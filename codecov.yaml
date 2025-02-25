@@ -1,0 +1,10 @@
+coverage:
+  status:
+    project:
+      default:
+        target: 90%
+        threshold: 5%
+
+# Only post if coverage drops AND there are uncovered lines of code
+comment:
+  require_changes: "coverage_drop AND uncovered_patch"
