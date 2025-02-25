@@ -60,7 +60,7 @@ func (packageService PackageService) GetAll() []models.Package {
 func (packageService PackageService) InstallPackage(pkg models.Package, bbeConfig models.BbeConfig) error {
 	for _, p := range packages {
 		if p.Package.Name == pkg.Name {
-			if !IsPackageInstalled(pkg) {
+			if !IsPackageInstalled(pkg, bbeConfig) {
 				cmd := execCommand("helm", "repo", "add", p.PackageRepository.Name, p.PackageRepository.RepositoryUrl)
 				if err := cmd.Run(); err != nil {
 					return fmt.Errorf("failed to add helm repository %s: %w", p.PackageRepository.Name, err)
@@ -125,8 +125,11 @@ func (packageService PackageService) UninstallPackage(pkg models.Package, bbeCon
 	return fmt.Errorf("Package `%s` not found", pkg.Name)
 }
 
-func IsPackageInstalled(pkg models.Package) bool {
-	cmd := execCommand("helm", "status", pkg.Name, "--namespace", pkg.Name)
+func IsPackageInstalled(pkg models.Package, bbeConfig models.BbeConfig) bool {
+	cmd := execCommand("helm", "status", pkg.Name,
+		"--namespace", pkg.Name,
+		"--kube-context", bbeConfig.Bbe.Cluster.Context,
+	)
 	if err := cmd.Run(); err != nil {
 		return false
 	}
