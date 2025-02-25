@@ -89,6 +89,74 @@ func Test_InstallPackage_Succeeds(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+func Test_UpgradePackage_Fails_WhenPackageNotFound(t *testing.T) {
+	packageName := "not-a-real-package"
+
+	packagesService := PackageService{}
+
+	bbeConfig := models.BbeConfig{}
+	bbeConfig.Bbe.Cluster.Context = "test-context"
+	err := packagesService.UpgradePackage(models.Package{Name: "not-a-real-package", Version: "0.1.3"}, bbeConfig)
+
+	// Assert an error occurred
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), fmt.Sprintf("package %s not found", packageName))
+}
+
+func Test_UpgradePackage_Fails_WhenHelmRepositoryNotFound(t *testing.T) {
+	// Set the mock execCommand to return a mocked Command
+	execCommand = func(_ string, _ ...string) *exec.Cmd {
+		return exec.Command("false")
+	}
+
+	packagesService := PackageService{}
+
+	bbeConfig := models.BbeConfig{}
+	bbeConfig.Bbe.Cluster.Context = "test-context"
+	err := packagesService.UpgradePackage(models.Package{Name: "blocky", Version: "0.1.3"}, bbeConfig)
+
+	// Assert an error occurred
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to add helm repository bbe: exit status 1")
+}
+
+func Test_UpgradePackage_Fails_WhenHelmInstallFails(t *testing.T) {
+	// Set the mock execCommand to return a mocked Command
+	execCommand = func(_ string, args ...string) *exec.Cmd {
+		if args[0] == "repo" {
+			return exec.Command("true")
+		} else {
+			return exec.Command("false")
+		}
+	}
+
+	packagesService := PackageService{}
+
+	bbeConfig := models.BbeConfig{}
+	bbeConfig.Bbe.Cluster.Context = "test-context"
+	err := packagesService.UpgradePackage(models.Package{Name: "blocky", Version: "0.1.3"}, bbeConfig)
+
+	// Assert an error occurred
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to upgrade helm package blocky: exit status 1")
+}
+
+func Test_UpgradePackage_Succeeds(t *testing.T) {
+	// Set the mock execCommand to return a mocked Command
+	execCommand = func(_ string, args ...string) *exec.Cmd {
+		return exec.Command("true")
+	}
+
+	packagesService := PackageService{}
+
+	bbeConfig := models.BbeConfig{}
+	bbeConfig.Bbe.Cluster.Context = "test-context"
+	err := packagesService.UpgradePackage(models.Package{Name: "blocky", Version: "0.1.3"}, bbeConfig)
+
+	// Assert an error occurred
+	assert.NoError(t, err)
+}
+
 func Test_UninstallPackage_Fails_WhenPackageNotFound(t *testing.T) {
 	packageName := "not-a-real-package"
 	packagesService := PackageService{}

@@ -68,6 +68,29 @@ func (packageService PackageService) InstallPackage(pkg models.Package, bbeConfi
 	return fmt.Errorf("package %s not found", pkg.Name)
 }
 
+func (packageService PackageService) UpgradePackage(pkg models.Package, bbeConfig models.BbeConfig) error {
+	for _, p := range packages {
+		if p.Package.Name == pkg.Name {
+			cmd := execCommand("helm", "repo", "add", p.PackageRepository.Name, p.PackageRepository.RepositoryUrl)
+			if err := cmd.Run(); err != nil {
+				return fmt.Errorf("failed to add helm repository %s: %w", p.PackageRepository.Name, err)
+			}
+
+			cmd = execCommand("helm", "upgrade", pkg.Name, fmt.Sprintf("%s/%s", p.PackageRepository.Name, p.HelmChart),
+				"--version", p.HelmChartVersion,
+				"--namespace", pkg.Name,
+				"--create-namespace",
+				"--kube-context", bbeConfig.Bbe.Cluster.Context)
+			if err := cmd.Run(); err != nil {
+				return fmt.Errorf("failed to upgrade helm package %s: %w", pkg.Name, err)
+			}
+			logger.Info(fmt.Sprintf("Upgraded package %s to version %s", pkg.Name, p.Package.Version))
+			return nil
+		}
+	}
+	return fmt.Errorf("package %s not found", pkg.Name)
+}
+
 func (packageService PackageService) UninstallPackage(pkg models.Package, bbeConfig models.BbeConfig) error {
 	for _, p := range packages {
 		if p.Package.Name == pkg.Name {
