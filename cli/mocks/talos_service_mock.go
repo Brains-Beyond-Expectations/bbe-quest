@@ -3,7 +3,7 @@ package mocks
 import (
 	"os/exec"
 
-	"github.com/Brains-Beyond-Expectations/bbe-quest/interfaces"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/interfaces"
 	"github.com/stretchr/testify/mock"
 )
 

@@ -4,8 +4,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Brains-Beyond-Expectations/bbe-quest/mocks"
-	"github.com/Brains-Beyond-Expectations/bbe-quest/models"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/mocks"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )

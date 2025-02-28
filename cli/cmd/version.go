@@ -1,8 +1,8 @@
 package cmd
 
 import (
-	"github.com/Brains-Beyond-Expectations/bbe-quest/constants"
-	"github.com/Brains-Beyond-Expectations/bbe-quest/misc/logger"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/constants"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/misc/logger"
 	"github.com/spf13/cobra"
 )
 
