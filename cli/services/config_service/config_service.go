@@ -25,6 +25,7 @@ var osReadFile = os.ReadFile
 var osMkdirAll = os.MkdirAll
 var osWriteFile = os.WriteFile
 var initS3Client = initS3Service
+var yamlMarshal = yaml.Marshal
 
 type ConfigService struct{}
 
@@ -125,7 +126,7 @@ func (config ConfigService) writeBbeConfig(helperService interfaces.HelperServic
 	}
 	bbeConfig.Bbe.Packages = filteredPackages
 
-	yamlFile, err := yaml.Marshal(bbeConfig)
+	yamlFile, err := yamlMarshal(bbeConfig)
 	if err != nil {
 		return err
 	}

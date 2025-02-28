@@ -24,3 +24,8 @@ func (mock *MockOs) WriteFile(filename string, data []byte, perm os.FileMode) er
 	args := mock.Called(filename, data, perm)
 	return args.Error(0)
 }
+
+func (mock *MockOs) YamlMarshal(v interface{}) ([]byte, error) {
+	args := mock.Called(v)
+	return args.Get(0).([]byte), args.Error(1)
+}
