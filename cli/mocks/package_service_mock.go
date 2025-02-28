@@ -1,7 +1,7 @@
 package mocks
 
 import (
-	"github.com/Brains-Beyond-Expectations/bbe-quest/models"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/models"
 	"github.com/stretchr/testify/mock"
 )
 
@@ -15,6 +15,11 @@ func (m *MockPackageService) GetAll() []models.Package {
 }
 
 func (m *MockPackageService) InstallPackage(pkg models.Package, bbeConfig models.BbeConfig) error {
+	args := m.Called(pkg)
+	return args.Error(0)
+}
+
+func (m *MockPackageService) UpgradePackage(pkg models.Package, bbeConfig models.BbeConfig) error {
 	args := m.Called(pkg)
 	return args.Error(0)
 }

@@ -6,17 +6,17 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Brains-Beyond-Expectations/bbe-quest/constants"
-	"github.com/Brains-Beyond-Expectations/bbe-quest/interfaces"
-	"github.com/Brains-Beyond-Expectations/bbe-quest/misc/logger"
-	"github.com/Brains-Beyond-Expectations/bbe-quest/models"
-	"github.com/Brains-Beyond-Expectations/bbe-quest/services/config_service"
-	"github.com/Brains-Beyond-Expectations/bbe-quest/services/dependency_service"
-	"github.com/Brains-Beyond-Expectations/bbe-quest/services/helper_service"
-	"github.com/Brains-Beyond-Expectations/bbe-quest/services/image_service"
-	"github.com/Brains-Beyond-Expectations/bbe-quest/services/ipfinder_service"
-	"github.com/Brains-Beyond-Expectations/bbe-quest/services/talos_service"
-	"github.com/Brains-Beyond-Expectations/bbe-quest/services/ui_service"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/constants"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/interfaces"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/misc/logger"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/models"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/services/config_service"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/services/dependency_service"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/services/helper_service"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/services/image_service"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/services/ipfinder_service"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/services/talos_service"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/services/ui_service"
 	"github.com/briandowns/spinner"
 	"github.com/lucasepe/codename"
 	"github.com/spf13/cobra"
@@ -90,9 +90,14 @@ func setupCommand(helperService interfaces.HelperServiceInterface, dependencySer
 		panic(err)
 	}
 
-	nodeType := image_service.IntelNuc
-	if answer == "Raspberry Pi 4 (or older)" {
+	var nodeType models.NodeType
+	switch answer {
+	case "Intel NUC":
+		nodeType = image_service.IntelNuc
+	case "Raspberry Pi 4 (or older)":
 		nodeType = image_service.RaspberryPi
+	default:
+		panic("Invalid node type")
 	}
 
 	err = imageCreation(helperService, uiService, imageService, workingDirectory, nodeType)
@@ -255,10 +260,7 @@ func setupCommand(helperService interfaces.HelperServiceInterface, dependencySer
 	}
 
 	if allowSchedulingOnControlPlanes != "" {
-		scheduleOnControlPlane := false
-		if allowSchedulingOnControlPlanes == "Yes" {
-			scheduleOnControlPlane = true
-		}
+		scheduleOnControlPlane := allowSchedulingOnControlPlanes == "Yes"
 		err = talosService.ModifySchedulingOnControlPlane(helperService, scheduleOnControlPlane)
 		if err != nil {
 			return fmt.Errorf("Error while storing controlplane scheduling in file: %w", err)

@@ -4,8 +4,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Brains-Beyond-Expectations/bbe-quest/mocks"
-	"github.com/Brains-Beyond-Expectations/bbe-quest/models"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/mocks"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -50,7 +50,7 @@ func Test_installCommand_Fails_WithNoCluster(t *testing.T) {
 	packageService.AssertNumberOfCalls(t, "InstallPackage", 0)
 }
 
-func Test_installCommand_Suceeds_ProceedsWhenFailingToUninstallPackages(t *testing.T) {
+func Test_installCommand_Succeeds_ProceedsWhenFailingToUninstallPackages(t *testing.T) {
 	helperService, uiService, configService, packageService := initInstallCommand()
 
 	packageService.On("UninstallPackage", mock.Anything).Return(errors.New("test error"))

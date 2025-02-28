@@ -5,14 +5,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Brains-Beyond-Expectations/bbe-quest/constants"
-	"github.com/Brains-Beyond-Expectations/bbe-quest/mocks"
-	"github.com/Brains-Beyond-Expectations/bbe-quest/models"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/constants"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/mocks"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
 
-func Test_setupCommand_Succeeds_WithControlPlane(t *testing.T) {
+func Test_setupCommand_Succeeds_WithControlPlane_RaspberryPi(t *testing.T) {
 	helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp := initSetupTests()
 
 	mockSuccessfulSetupFlow(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp, true)
@@ -28,11 +28,54 @@ func Test_setupCommand_Succeeds_WithControlPlane(t *testing.T) {
 	configService.AssertNumberOfCalls(t, "UpdateBbeClusterName", 1)
 }
 
-func Test_setupCommand_Succeeds_WithWorkerNode(t *testing.T) {
+func Test_setupCommand_Succeeds_WithWorkerNode_RaspberryPi(t *testing.T) {
 	helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp := initSetupTests()
 
 	uiService.On("CreateSelect", "Is this the first node in your cluster?", mock.Anything).Return("No", nil)
 	configService.On("CheckForTalosConfigs", helperService).Return(true)
+
+	mockSuccessfulSetupFlow(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp, false)
+
+	err := setupCommand(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService)
+
+	assert.Nil(t, err)
+	helperService.AssertNumberOfCalls(t, "IsValidIp", 0)
+	imageService.AssertNumberOfCalls(t, "CreateImage", 1)
+	talosService.AssertNumberOfCalls(t, "GetDisks", 1)
+	configService.AssertNumberOfCalls(t, "GenerateBbeConfig", 0)
+	configService.AssertNumberOfCalls(t, "SyncConfigsWithAws", 0)
+	configService.AssertNumberOfCalls(t, "UpdateBbeClusterName", 0)
+}
+
+func Test_setupCommand_Succeeds_WithControlPlane_IntelNUC(t *testing.T) {
+	helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp := initSetupTests()
+
+	uiService.On("CreateSelect", "What type of device are you setting up?", mock.Anything).Return("Intel NUC", nil)
+	uiService.On("CreateSelect", "Please use balenaEtcher to flash the .iso to your USB device", mock.Anything).Return("Done", nil)
+	uiService.On("CreateSelect", "Please insert the USB device into your new node and boot from it", mock.Anything).Return("Done", nil)
+
+	mockSuccessfulSetupFlow(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp, true)
+
+	err := setupCommand(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService)
+
+	assert.Nil(t, err)
+	helperService.AssertNumberOfCalls(t, "IsValidIp", 0)
+	imageService.AssertNumberOfCalls(t, "CreateImage", 1)
+	talosService.AssertNumberOfCalls(t, "GetDisks", 1)
+	configService.AssertNumberOfCalls(t, "GenerateBbeConfig", 0)
+	configService.AssertNumberOfCalls(t, "SyncConfigsWithAws", 0)
+	configService.AssertNumberOfCalls(t, "UpdateBbeClusterName", 1)
+}
+
+func Test_setupCommand_Succeeds_WithWorkerNode_IntelNUC(t *testing.T) {
+	helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp := initSetupTests()
+
+	uiService.On("CreateSelect", "Is this the first node in your cluster?", mock.Anything).Return("No", nil)
+	configService.On("CheckForTalosConfigs", helperService).Return(true)
+
+	uiService.On("CreateSelect", "What type of device are you setting up?", mock.Anything).Return("Intel NUC", nil)
+	uiService.On("CreateSelect", "Please use balenaEtcher to flash the .iso to your USB device", mock.Anything).Return("Done", nil)
+	uiService.On("CreateSelect", "Please insert the USB device into your new node and boot from it", mock.Anything).Return("Done", nil)
 
 	mockSuccessfulSetupFlow(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp, false)
 

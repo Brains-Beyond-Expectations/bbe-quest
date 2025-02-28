@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os/exec"
 
-	"github.com/Brains-Beyond-Expectations/bbe-quest/misc/logger"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/misc/logger"
 )
 
 type DependencyService struct{}
