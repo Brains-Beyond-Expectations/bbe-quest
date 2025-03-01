@@ -16,9 +16,11 @@ func Test_GetAll_Succeeds(t *testing.T) {
 	result := packagesService.GetAll()
 
 	// Assert that the result contains the correct package data
-	assert.Len(t, result, 1) // We have one package in the predefined array
+	assert.Len(t, result, 2) // We have one package in the predefined array
 	assert.Equal(t, "blocky", result[0].Name)
 	assert.Equal(t, "0.1.3", result[0].Version)
+	assert.Equal(t, "ingress-nginx", result[1].Name)
+	assert.Equal(t, "4.12.0", result[1].Version)
 }
 
 func Test_InstallPackage_Fails_WhenPackageNotFound(t *testing.T) {
@@ -32,7 +34,7 @@ func Test_InstallPackage_Fails_WhenPackageNotFound(t *testing.T) {
 
 	// Assert an error occurred
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), fmt.Sprintf("package %s not found", packageName))
+	assert.Contains(t, err.Error(), fmt.Sprintf("Package `%s` not found", packageName))
 }
 
 func Test_InstallPackage_Fails_WhenHelmRepositoryNotFound(t *testing.T) {
@@ -76,13 +78,33 @@ func Test_InstallPackage_Fails_WhenHelmInstallFails(t *testing.T) {
 func Test_InstallPackage_Succeeds(t *testing.T) {
 	// Set the mock execCommand to return a mocked Command
 	execCommand = func(_ string, args ...string) *exec.Cmd {
-		return exec.Command("true")
+		if args[0] == "status" {
+			return exec.Command("false")
+		} else {
+			return exec.Command("true")
+		}
 	}
 
 	packagesService := PackageService{}
 
 	bbeConfig := models.BbeConfig{}
 	bbeConfig.Bbe.Cluster.Context = "test-context"
+	err := packagesService.InstallPackage(models.Package{Name: "blocky", Version: "0.1.3"}, bbeConfig)
+
+	// Assert an error occurred
+	assert.NoError(t, err)
+}
+
+func Test_InstallPackage_Skips_Already_Installed_And_Succeeds(t *testing.T) {
+	// Set the mock execCommand to return a mocked Command
+	execCommand = func(_ string, args ...string) *exec.Cmd {
+		return exec.Command("true")
+	}
+
+	packagesService := PackageService{}
+	bbeConfig := models.BbeConfig{}
+	bbeConfig.Bbe.Cluster.Context = "test-context"
+
 	err := packagesService.InstallPackage(models.Package{Name: "blocky", Version: "0.1.3"}, bbeConfig)
 
 	// Assert an error occurred
@@ -105,7 +127,7 @@ func Test_UpgradePackage_Fails_WhenPackageNotFound(t *testing.T) {
 
 func Test_UpgradePackage_Fails_WhenHelmRepositoryNotFound(t *testing.T) {
 	// Set the mock execCommand to return a mocked Command
-	execCommand = func(_ string, _ ...string) *exec.Cmd {
+	execCommand = func(_ string, args ...string) *exec.Cmd {
 		return exec.Command("false")
 	}
 
@@ -156,7 +178,6 @@ func Test_UpgradePackage_Succeeds(t *testing.T) {
 	// Assert an error occurred
 	assert.NoError(t, err)
 }
-
 func Test_UninstallPackage_Fails_WhenPackageNotFound(t *testing.T) {
 	packageName := "not-a-real-package"
 	packagesService := PackageService{}
@@ -167,7 +188,7 @@ func Test_UninstallPackage_Fails_WhenPackageNotFound(t *testing.T) {
 
 	// Assert an error occurred
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), fmt.Sprintf("package %s not found", packageName))
+	assert.Contains(t, err.Error(), fmt.Sprintf("Package `%s` not found", packageName))
 }
 
 func Test_UninstallPackage_Fails_WhenHelmFails(t *testing.T) {

@@ -8,5 +8,6 @@ controlplane.yaml
 worker.yaml
 talosconfig
 cover.out
+__debug_*
 coverage.out
 *.code-workspace

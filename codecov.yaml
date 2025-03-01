@@ -8,3 +8,7 @@ coverage:
 # Only post if coverage drops AND there are uncovered lines of code
 comment:
   require_changes: "coverage_drop AND uncovered_patch"
+ignore:
+  - "cli/mocks"
+  - "assets"
+  - "**/_test.go"
