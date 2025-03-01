@@ -1,6 +1,7 @@
 package mocks
 
 import (
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/interfaces"
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/models"
 	"github.com/stretchr/testify/mock"
 )
@@ -14,17 +15,17 @@ func (m *MockPackageService) GetAll() []models.Package {
 	return args.Get(0).([]models.Package)
 }
 
-func (m *MockPackageService) InstallPackage(pkg models.Package, bbeConfig models.BbeConfig) error {
+func (m *MockPackageService) InstallPackage(pkg models.Package, bbeConfig models.BbeConfig, helmService interfaces.HelmServiceInterface) error {
 	args := m.Called(pkg)
 	return args.Error(0)
 }
 
-func (m *MockPackageService) UpgradePackage(pkg models.Package, bbeConfig models.BbeConfig) error {
+func (m *MockPackageService) UpgradePackage(pkg models.Package, bbeConfig models.BbeConfig, helmService interfaces.HelmServiceInterface) error {
 	args := m.Called(pkg)
 	return args.Error(0)
 }
 
-func (m *MockPackageService) UninstallPackage(pkg models.Package, bbeConfig models.BbeConfig) error {
+func (m *MockPackageService) UninstallPackage(pkg models.Package, bbeConfig models.BbeConfig, helmService interfaces.HelmServiceInterface) error {
 	args := m.Called(pkg)
 	return args.Error(0)
 }
