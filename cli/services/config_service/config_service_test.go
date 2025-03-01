@@ -526,7 +526,6 @@ func Test_SyncConfigsWithAws_Succeeds_WithConfigsRemotely(t *testing.T) {
 	mockOs.AssertNumberOfCalls(t, "ReadFile", 0)
 	mockOs.AssertNumberOfCalls(t, "WriteFile", 4)
 }
-
 func Test_SyncConfigsWithAws_Succeeds_WithMismatchedTimestamps(t *testing.T) {
 	configService := ConfigService{}
 
@@ -585,4 +584,121 @@ func Test_SyncConfigsWithAws_Succeeds_WithMismatchedTimestamps(t *testing.T) {
 
 	mockOs.AssertNumberOfCalls(t, "ReadFile", 4)
 	mockOs.AssertNumberOfCalls(t, "WriteFile", 2)
+}
+
+func Test_WriteBbeConfig_Fails_On_MkDir(t *testing.T) {
+	// Mock HelperServiceInterface
+	mockHelperService := &mocks.MockHelperService{}
+	now := time.Now()
+	mockHelperService.On("CheckIfFileExists", fmt.Sprintf("/%s", constants.BbeConfigFile)).Return(&now, true)
+	mockHelperService.On("GetConfigDir").Return("/mock/config/dir")
+
+	// Mock the os functions to avoid actual file system changes
+	mockOs := &mocks.MockOs{}
+	mockOs.On("MkdirAll", mock.Anything, mock.Anything).Return(errors.New("Fail on folder creation"))
+	mockOs.On("WriteFile", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	osMkdirAll = mockOs.MkdirAll
+	osWriteFile = mockOs.WriteFile
+
+	// Create the configService instance
+	configService := ConfigService{}
+
+	// Prepare the bbeConfig with non-empty and empty packages
+	bbeConfig := &models.BbeConfig{}
+	bbeConfig.Bbe.Cluster.Name = "test"
+	bbeConfig.Bbe.Packages = []models.Package{
+		{
+			Name:    "package_one",
+			Version: "2.0.0",
+		},
+	}
+
+	// Call the writeBbeConfig method
+	err := configService.writeBbeConfig(mockHelperService, bbeConfig)
+
+	// Assert no error occurred
+	assert.Error(t, err)
+
+	// Check that the necessary function calls were made
+	mockOs.AssertNumberOfCalls(t, "MkdirAll", 1)
+	mockOs.AssertNumberOfCalls(t, "WriteFile", 0)
+}
+
+func Test_WriteBbeConfig_Fails_On_OsWrite(t *testing.T) {
+	// Mock HelperServiceInterface
+	mockHelperService := &mocks.MockHelperService{}
+	now := time.Now()
+	mockHelperService.On("CheckIfFileExists", fmt.Sprintf("/%s", constants.BbeConfigFile)).Return(&now, true)
+	mockHelperService.On("GetConfigDir").Return("/mock/config/dir")
+
+	// Mock the os functions to avoid actual file system changes
+	mockOs := &mocks.MockOs{}
+	mockOs.On("MkdirAll", mock.Anything, mock.Anything).Return(nil)
+	mockOs.On("WriteFile", mock.Anything, mock.Anything, mock.Anything).Return(errors.New("Fail on OS writing"))
+	osMkdirAll = mockOs.MkdirAll
+	osWriteFile = mockOs.WriteFile
+
+	// Create the configService instance
+	configService := ConfigService{}
+
+	// Prepare the bbeConfig with non-empty and empty packages
+	bbeConfig := &models.BbeConfig{}
+	bbeConfig.Bbe.Cluster.Name = "test"
+	bbeConfig.Bbe.Packages = []models.Package{
+		{
+			Name:    "package_one",
+			Version: "2.0.0",
+		},
+	}
+
+	// Call the writeBbeConfig method
+	err := configService.writeBbeConfig(mockHelperService, bbeConfig)
+
+	// Assert no error occurred
+	assert.Error(t, err)
+
+	// Check that the necessary function calls were made
+	mockOs.AssertNumberOfCalls(t, "MkdirAll", 1)
+	mockOs.AssertNumberOfCalls(t, "WriteFile", 1)
+}
+
+func Test_WriteBbeConfig_Fails_On_Yaml_Marshal(t *testing.T) {
+	// Mock HelperServiceInterface
+	mockHelperService := &mocks.MockHelperService{}
+	now := time.Now()
+	mockHelperService.On("CheckIfFileExists", fmt.Sprintf("/%s", constants.BbeConfigFile)).Return(&now, true)
+	mockHelperService.On("GetConfigDir").Return("/mock/config/dir")
+
+	// Mock the os functions to avoid actual file system changes
+	mockOs := &mocks.MockOs{}
+	mockOs.On("MkdirAll", mock.Anything, mock.Anything).Return(nil)
+	mockOs.On("WriteFile", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	mockOs.On("YamlMarshal", mock.Anything).Return([]byte(""), errors.New("Marshal has failed"))
+	osMkdirAll = mockOs.MkdirAll
+	osWriteFile = mockOs.WriteFile
+	yamlMarshal = mockOs.YamlMarshal
+
+	// Create the configService instance
+	configService := ConfigService{}
+
+	// Prepare the bbeConfig with non-empty and empty packages
+	bbeConfig := &models.BbeConfig{}
+	bbeConfig.Bbe.Cluster.Name = "test"
+	bbeConfig.Bbe.Packages = []models.Package{
+		{
+			Name:    "package_one",
+			Version: "2.0.0",
+		},
+	}
+
+	// Call the writeBbeConfig method
+	err := configService.writeBbeConfig(mockHelperService, bbeConfig)
+
+	// Assert no error occurred
+	assert.Error(t, err)
+
+	// Check that the necessary function calls were made
+	mockOs.AssertNumberOfCalls(t, "YamlMarshal", 1)
+	mockOs.AssertNumberOfCalls(t, "MkdirAll", 0)
+	mockOs.AssertNumberOfCalls(t, "WriteFile", 0)
 }
