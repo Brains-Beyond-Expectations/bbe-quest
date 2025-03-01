@@ -16,7 +16,7 @@ var rootCmd = &cobra.Command{
 	},
 }
 
-func Execute() { // coverage-ignore
+func Execute() {
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(0)
 	}

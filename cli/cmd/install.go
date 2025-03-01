@@ -20,7 +20,7 @@ var installCmd = &cobra.Command{
 	Aliases: []string{"i"},
 	Short:   "Install BBE packages",
 	Args:    cobra.ExactArgs(0),
-	Run: func(cmd *cobra.Command, args []string) { // coverage-ignore
+	Run: func(cmd *cobra.Command, args []string) {
 		helperService := helper_service.HelperService{}
 		uiService := ui_service.UiService{}
 		configService := config_service.ConfigService{}
@@ -50,7 +50,7 @@ func installCommand(helperService interfaces.HelperServiceInterface, uiService i
 	selectedIndexes, packageList := buildPackageIndex(allPackages, *bbeConfig)
 
 	chosenPackages, err := uiService.CreateMultiChoose("Select packages to install", packageList, selectedIndexes)
-	if err != nil { // coverage-ignore
+	if err != nil {
 		panic(err)
 	}
 
