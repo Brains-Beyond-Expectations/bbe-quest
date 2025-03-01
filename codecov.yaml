@@ -12,3 +12,5 @@ ignore:
   - "cli/mocks"
   - "assets"
   - "**/_test.go"
+  - "cli/main.go"
+  - "cli/misc/logger/logger.go"

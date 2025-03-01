@@ -18,7 +18,7 @@ var upgradeCmd = &cobra.Command{
 	Aliases: []string{"u"},
 	Short:   "Upgrade BBE packages",
 	Args:    cobra.ExactArgs(0),
-	Run: func(cmd *cobra.Command, args []string) { // coverage-ignore
+	Run: func(cmd *cobra.Command, args []string) {
 		helperService := helper_service.HelperService{}
 		uiService := ui_service.UiService{}
 		configService := config_service.ConfigService{}
