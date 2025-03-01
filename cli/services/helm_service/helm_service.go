@@ -61,7 +61,7 @@ func (HelmService HelmService) Status(pkgName string, namespace string, context 
 		"--kube-context", context)
 
 	if err := cmd.Run(); err != nil {
-		return false, nil
+		return false, fmt.Errorf("Failed to get helm status for `%s`: %w", pkgName, err)
 	}
 	return true, nil
 }
