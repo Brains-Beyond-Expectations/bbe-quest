@@ -9,6 +9,7 @@ import (
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/misc/logger"
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/models"
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/services/config_service"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/services/helm_service"
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/services/helper_service"
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/services/package_service"
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/services/ui_service"
@@ -25,8 +26,9 @@ var installCmd = &cobra.Command{
 		uiService := ui_service.UiService{}
 		configService := config_service.ConfigService{}
 		packageService := package_service.PackageService{}
+		helmService := helm_service.HelmService{}
 
-		err := installCommand(helperService, uiService, configService, packageService)
+		err := installCommand(helperService, uiService, configService, packageService, helmService)
 		if err != nil {
 			logger.Error("", err)
 			os.Exit(1)
@@ -38,7 +40,7 @@ func init() {
 	rootCmd.AddCommand(installCmd)
 }
 
-func installCommand(helperService interfaces.HelperServiceInterface, uiService interfaces.UiServiceInterface, configService interfaces.ConfigServiceInterface, packageService interfaces.PackageServiceInterface) error {
+func installCommand(helperService interfaces.HelperServiceInterface, uiService interfaces.UiServiceInterface, configService interfaces.ConfigServiceInterface, packageService interfaces.PackageServiceInterface, helmService interfaces.HelmServiceInterface) error {
 	bbeConfig, err := configService.GetBbeConfig(helperService)
 	if err != nil || bbeConfig.Bbe.Cluster.Name == "" {
 		logger.Info("No BBE cluster found, please run 'bbe setup' to create your cluster")
@@ -59,12 +61,12 @@ func installCommand(helperService interfaces.HelperServiceInterface, uiService i
 	updatedBbeConfig := *bbeConfig
 	updatedBbeConfig.Bbe.Packages = bbeConfig.Bbe.Packages
 
-	err = uninstallPackages(helperService, configService, packageService, updatedBbeConfig, packagesToUninstall)
+	err = uninstallPackages(helperService, configService, packageService, helmService, updatedBbeConfig, packagesToUninstall)
 	if err != nil {
 		return fmt.Errorf("Failed to uninstall packages: %w", err)
 	}
 
-	err = installPackages(helperService, configService, packageService, updatedBbeConfig, packagesToInstall)
+	err = installPackages(helperService, configService, packageService, helmService, updatedBbeConfig, packagesToInstall)
 	if err != nil {
 		return fmt.Errorf("Failed to install packages: %w", err)
 	}
@@ -103,11 +105,11 @@ func diffPackages(allPackages []models.Package, chosenPackages []string) (packag
 	return packagesToInstall, packagesToUninstall
 }
 
-func uninstallPackages(helperService interfaces.HelperServiceInterface, configService interfaces.ConfigServiceInterface, packageService interfaces.PackageServiceInterface, updatedBbeConfig models.BbeConfig, uninstalledPackages []models.Package) error {
+func uninstallPackages(helperService interfaces.HelperServiceInterface, configService interfaces.ConfigServiceInterface, packageService interfaces.PackageServiceInterface, helmService interfaces.HelmServiceInterface, updatedBbeConfig models.BbeConfig, uninstalledPackages []models.Package) error {
 	for _, pkg := range uninstalledPackages {
 		for i, existingPkg := range updatedBbeConfig.Bbe.Packages {
 			if existingPkg.Name == pkg.Name {
-				err := packageService.UninstallPackage(pkg, updatedBbeConfig)
+				err := packageService.UninstallPackage(pkg, updatedBbeConfig, helmService)
 				if err != nil {
 					logger.Error("Failed to uninstall package", err)
 					continue
@@ -125,9 +127,9 @@ func uninstallPackages(helperService interfaces.HelperServiceInterface, configSe
 	return nil
 }
 
-func installPackages(helperService interfaces.HelperServiceInterface, configService interfaces.ConfigServiceInterface, packageService interfaces.PackageServiceInterface, updatedBbeConfig models.BbeConfig, installedPackages []models.Package) error {
+func installPackages(helperService interfaces.HelperServiceInterface, configService interfaces.ConfigServiceInterface, packageService interfaces.PackageServiceInterface, helmService interfaces.HelmServiceInterface, updatedBbeConfig models.BbeConfig, installedPackages []models.Package) error {
 	for _, pkg := range installedPackages {
-		err := packageService.InstallPackage(pkg, updatedBbeConfig)
+		err := packageService.InstallPackage(pkg, updatedBbeConfig, helmService)
 		if err != nil {
 			return fmt.Errorf("Failed to install package: %w", err)
 		}

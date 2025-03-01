@@ -7,6 +7,7 @@ import (
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/interfaces"
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/misc/logger"
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/services/config_service"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/services/helm_service"
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/services/helper_service"
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/services/package_service"
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/services/ui_service"
@@ -23,10 +24,11 @@ var upgradeCmd = &cobra.Command{
 		uiService := ui_service.UiService{}
 		configService := config_service.ConfigService{}
 		packageService := package_service.PackageService{}
+		helmService := helm_service.HelmService{}
 
 		uninteractive, _ := cmd.Flags().GetBool("yes")
 
-		err := upgradeCommand(helperService, uiService, configService, packageService, uninteractive)
+		err := upgradeCommand(helperService, uiService, configService, packageService, helmService, uninteractive)
 		if err != nil {
 			logger.Error("", err)
 			os.Exit(1)
@@ -34,7 +36,7 @@ var upgradeCmd = &cobra.Command{
 	},
 }
 
-func upgradeCommand(helperService interfaces.HelperServiceInterface, uiService interfaces.UiServiceInterface, configService interfaces.ConfigServiceInterface, packageService interfaces.PackageServiceInterface, uninteractive bool) error {
+func upgradeCommand(helperService interfaces.HelperServiceInterface, uiService interfaces.UiServiceInterface, configService interfaces.ConfigServiceInterface, packageService interfaces.PackageServiceInterface, helmService interfaces.HelmServiceInterface, uninteractive bool) error {
 	bbeConfig, err := configService.GetBbeConfig(helperService)
 	if err != nil || bbeConfig.Bbe.Cluster.Name == "" {
 		logger.Info("No BBE cluster found, please run 'bbe setup' to create your cluster")
@@ -67,7 +69,7 @@ func upgradeCommand(helperService interfaces.HelperServiceInterface, uiService i
 						upgrade = result == "Yes"
 					}
 					if upgrade {
-						err := packageService.UpgradePackage(pkg, *bbeConfig)
+						err := packageService.UpgradePackage(pkg, *bbeConfig, helmService)
 						if err != nil {
 							return err
 						}
