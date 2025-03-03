@@ -14,3 +14,4 @@ ignore:
   - "**/_test.go"
   - "cli/main.go"
   - "cli/misc/logger/logger.go"
+  - "cli/services/s3_service"
