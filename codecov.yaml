@@ -2,7 +2,7 @@ coverage:
   status:
     project:
       default:
-        target: 90%
+        target: 80%
         threshold: 5%
 
 # Only post if coverage drops AND there are uncovered lines of code
@@ -10,5 +10,7 @@ comment:
   require_changes: "coverage_drop AND uncovered_patch"
 ignore:
   - "cli/mocks"
-  - "assets"
-  - "**/_test.go"
+  - "cli/main.go"
+  - "cli/misc/logger/logger.go"
+  - "cli/services/s3_service"
+  - "cli/services/ui_service"

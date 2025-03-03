@@ -16,14 +16,14 @@ type plainTextHandler struct {
 	level  slog.Level
 }
 
-func (h *plainTextHandler) Enabled(_ context.Context, level slog.Level) bool { // coverage-ignore
+func (h *plainTextHandler) Enabled(_ context.Context, level slog.Level) bool {
 	return level >= h.level
 }
 
-func (h *plainTextHandler) WithAttrs([]slog.Attr) slog.Handler { return h } // coverage-ignore
-func (h *plainTextHandler) WithGroup(string) slog.Handler      { return h } // coverage-ignore
+func (h *plainTextHandler) WithAttrs([]slog.Attr) slog.Handler { return h }
+func (h *plainTextHandler) WithGroup(string) slog.Handler      { return h }
 
-func (h *plainTextHandler) Handle(ctx context.Context, r slog.Record) error { // coverage-ignore
+func (h *plainTextHandler) Handle(ctx context.Context, r slog.Record) error {
 	if !h.Enabled(ctx, r.Level) {
 		return nil
 	}
@@ -34,7 +34,7 @@ func (h *plainTextHandler) Handle(ctx context.Context, r slog.Record) error { //
 
 var defaultHandler *plainTextHandler
 
-func Initialize() { // coverage-ignore
+func Initialize() {
 	defaultHandler = &plainTextHandler{
 		writer: os.Stdout,
 		level:  slog.LevelInfo,
@@ -48,23 +48,23 @@ func Initialize() { // coverage-ignore
 	slog.SetDefault(logger)
 }
 
-func Debug(msg string) { // coverage-ignore
+func Debug(msg string) {
 	slog.Debug(fmt.Sprintf("DEBUG: %s", msg))
 }
 
-func Info(msg string) { // coverage-ignore
+func Info(msg string) {
 	slog.Info(msg)
 }
 
-func Infof(msg string, args ...interface{}) { // coverage-ignore
+func Infof(msg string, args ...interface{}) {
 	slog.Info(fmt.Sprintf(msg, args...))
 }
 
-func Warning(msg string) { // coverage-ignore
+func Warning(msg string) {
 	slog.Warn(msg)
 }
 
-func Error(msg string, err error) { // coverage-ignore
+func Error(msg string, err error) {
 	if err != nil {
 		slog.Debug(err.Error())
 	}
