@@ -13,3 +13,4 @@ ignore:
   - "cli/main.go"
   - "cli/misc/logger/logger.go"
   - "cli/services/s3_service"
+  - "cli/services/ui_service"
