@@ -10,8 +10,6 @@ comment:
   require_changes: "coverage_drop AND uncovered_patch"
 ignore:
   - "cli/mocks"
-  - "assets"
-  - "**/_test.go"
   - "cli/main.go"
   - "cli/misc/logger/logger.go"
   - "cli/services/s3_service"
