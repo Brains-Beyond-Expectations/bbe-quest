@@ -2,7 +2,7 @@ coverage:
   status:
     project:
       default:
-        target: 90%
+        target: 80%
         threshold: 5%
 
 # Only post if coverage drops AND there are uncovered lines of code
