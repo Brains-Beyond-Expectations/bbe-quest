@@ -55,17 +55,6 @@ func (HelmService HelmService) UninstallChart(pkgName string, namespace string, 
 	return nil
 }
 
-func (HelmService HelmService) Status(pkgName string, namespace string, context string) (bool, error) {
-	cmd := execCommand("helm", "status", pkgName,
-		"--namespace", namespace,
-		"--kube-context", context)
-
-	if err := cmd.Run(); err != nil {
-		return false, fmt.Errorf("Failed to get helm status for `%s`: %w", pkgName, err)
-	}
-	return true, nil
-}
-
 func (HelmService HelmService) IsPackageInstalled(pkgName string, namespace string, context string) bool {
 	cmd := execCommand("helm", "status", pkgName,
 		"--namespace", namespace,

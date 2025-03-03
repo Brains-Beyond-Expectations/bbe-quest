@@ -114,35 +114,6 @@ func Test_Helm_Service_Succeeds_UnInstall(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func Test_Helm_Service_Fails_Status(t *testing.T) {
-	// Set the mock execCommand to return a mocked Command
-	execCommand = func(_ string, _ ...string) *exec.Cmd {
-		return exec.Command("false")
-	}
-
-	helmService := HelmService{}
-	res, err := helmService.Status("packageName", "namespace", "context")
-
-	// Assert an error occurred
-	assert.Error(t, err)
-	assert.False(t, res)
-	assert.Contains(t, err.Error(), "Failed to get helm status for `packageName`: exit status 1")
-}
-
-func Test_Helm_Service_Succeeds_Status(t *testing.T) {
-	// Set the mock execCommand to return a mocked Command
-	execCommand = func(_ string, _ ...string) *exec.Cmd {
-		return exec.Command("true")
-	}
-
-	helmService := HelmService{}
-	res, err := helmService.Status("packageName", "namespace", "context")
-
-	// Assert an error occurred
-	assert.NoError(t, err)
-	assert.True(t, res)
-}
-
 func Test_Helm_Service_Fails_IsPackageInstalled(t *testing.T) {
 	// Set the mock execCommand to return a mocked Command
 	execCommand = func(_ string, _ ...string) *exec.Cmd {
