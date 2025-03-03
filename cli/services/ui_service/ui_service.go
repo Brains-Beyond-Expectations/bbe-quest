@@ -7,7 +7,7 @@ import (
 
 type UiService struct{}
 
-func (uiService UiService) CreateSelect(title string, options []string) (string, error) { //coverage-ignore
+func (uiService UiService) CreateSelect(title string, options []string) (string, error) {
 	result, err := prompt.New().Ask(title).
 		Choose(options)
 	if err != nil {
@@ -17,7 +17,7 @@ func (uiService UiService) CreateSelect(title string, options []string) (string,
 	return result, nil
 }
 
-func (uiService UiService) CreateInput(title string, suggestion string) (string, error) { //coverage-ignore
+func (uiService UiService) CreateInput(title string, suggestion string) (string, error) {
 	result, err := prompt.New().Ask(title).Input(suggestion)
 	if err != nil {
 		return "", err
@@ -26,7 +26,7 @@ func (uiService UiService) CreateInput(title string, suggestion string) (string,
 	return result, nil
 }
 
-func (uiService UiService) CreateMultiChoose(title string, options []string, defaultIndex []int) ([]string, error) { //coverage-ignore
+func (uiService UiService) CreateMultiChoose(title string, options []string, defaultIndex []int) ([]string, error) {
 	result, err := prompt.New().Ask(title).
 		MultiChoose(options, multichoose.WithDefaultIndexes(0, defaultIndex))
 	if err != nil {

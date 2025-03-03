@@ -27,7 +27,7 @@ var setupCmd = &cobra.Command{
 	Aliases: []string{},
 	Short:   "Guides you through a BBE-Quest node setup",
 	Args:    cobra.ExactArgs(0),
-	Run: func(cmd *cobra.Command, args []string) { // coverage-ignore
+	Run: func(cmd *cobra.Command, args []string) {
 		helperService := helper_service.HelperService{}
 		dependencyService := dependency_service.DependencyService{}
 		talosService := talos_service.TalosService{}
@@ -66,7 +66,7 @@ func setupCommand(helperService interfaces.HelperServiceInterface, dependencySer
 
 	// Get current local path
 	workingDirectory, err := os.Getwd()
-	if err != nil { // coverage-ignore
+	if err != nil {
 		panic(err)
 	}
 
@@ -75,7 +75,7 @@ func setupCommand(helperService interfaces.HelperServiceInterface, dependencySer
 	}
 
 	answer, err := uiService.CreateSelect("Is this the first node in your cluster?", []string{"Yes", "No"})
-	if err != nil { // coverage-ignore
+	if err != nil {
 		panic(err)
 	}
 	createControlPlane := answer == "Yes"
@@ -86,7 +86,7 @@ func setupCommand(helperService interfaces.HelperServiceInterface, dependencySer
 	}
 
 	answer, err = uiService.CreateSelect("What type of device are you setting up?", []string{"Intel NUC", "Raspberry Pi 4 (or older)"})
-	if err != nil { // coverage-ignore
+	if err != nil {
 		panic(err)
 	}
 
@@ -114,12 +114,12 @@ func setupCommand(helperService interfaces.HelperServiceInterface, dependencySer
 	}
 
 	_, err = uiService.CreateSelect(firstMessage, []string{"Done"})
-	if err != nil { // coverage-ignore
+	if err != nil {
 		panic(err)
 	}
 
 	_, err = uiService.CreateSelect(secondMessage, []string{"Done"})
-	if err != nil { // coverage-ignore
+	if err != nil {
 		panic(err)
 	}
 
@@ -163,7 +163,7 @@ func setupCommand(helperService interfaces.HelperServiceInterface, dependencySer
 
 	///////////////////////////////////////////////////////////////////////////////// QUESTIONS ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	chosenIp, err := uiService.CreateInput("Please choose an ip for the new node", originalIp)
-	if err != nil { // coverage-ignore
+	if err != nil {
 		panic(err)
 	}
 
@@ -174,13 +174,13 @@ func setupCommand(helperService interfaces.HelperServiceInterface, dependencySer
 	}
 
 	disk, err := uiService.CreateSelect(fmt.Sprintf("Please select the disk to install Talos on for %s", chosenIp), disks)
-	if err != nil { // coverage-ignore
+	if err != nil {
 		panic(err)
 	}
 	diskSelectionResult := strings.Fields(disk)
 
 	gatewayIp, err := uiService.CreateInput("Please choose the correct gateway ip", gatewayIpSuggestion)
-	if err != nil { // coverage-ignore
+	if err != nil {
 		panic(err)
 	}
 
@@ -190,7 +190,7 @@ func setupCommand(helperService interfaces.HelperServiceInterface, dependencySer
 	}
 
 	hostname, err := uiService.CreateInput("Please select the hostname", suggestedHostname)
-	if err != nil { // coverage-ignore
+	if err != nil {
 		panic(err)
 	}
 
@@ -204,7 +204,7 @@ func setupCommand(helperService interfaces.HelperServiceInterface, dependencySer
 			}
 
 			clusterName, err = uiService.CreateInput("Please enter what you want to name your cluster", suggestedClusterName)
-			if err != nil { // coverage-ignore
+			if err != nil {
 				panic(err)
 			}
 
@@ -215,7 +215,7 @@ func setupCommand(helperService interfaces.HelperServiceInterface, dependencySer
 		}
 
 		allowSchedulingOnControlPlanes, err = uiService.CreateSelect("Do you want to allow scheduling on the control plane? This is required if you have only one node.", []string{"Yes", "No"})
-		if err != nil { // coverage-ignore
+		if err != nil {
 			panic(err)
 		}
 
@@ -324,7 +324,7 @@ func imageCreation(helperService interfaces.HelperServiceInterface, uiService in
 	_, imageExists := helperService.CheckIfFileExists(resultFilePath)
 	if imageExists {
 		result, err := uiService.CreateSelect("An image already exists, would you like to redownload it?", []string{"Yes", "No"})
-		if err != nil { // coverage-ignore
+		if err != nil {
 			panic(err)
 		}
 
