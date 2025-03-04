@@ -11,11 +11,11 @@ import (
 )
 
 func Test_upgradeCommand_Succeeds_WithNothingToDo(t *testing.T) {
-	helperService, uiService, configService, packageService := initUpgradeCommand()
+	helperService, uiService, configService, packageService, helmService := initUpgradeCommand()
 
 	mockSuccessfulUpgradeFlow(helperService, uiService, configService, packageService)
 
-	err := upgradeCommand(helperService, uiService, configService, packageService, false)
+	err := upgradeCommand(helperService, uiService, configService, packageService, helmService, false)
 
 	assert.Nil(t, err)
 	configService.AssertNumberOfCalls(t, "GetBbeConfig", 1)
@@ -31,7 +31,7 @@ func Test_upgradeCommand_Succeeds_WithNothingToDo(t *testing.T) {
 }
 
 func Test_upgradeCommand_Succeeds_WithInteractiveUpgrade(t *testing.T) {
-	helperService, uiService, configService, packageService := initUpgradeCommand()
+	helperService, uiService, configService, packageService, helmService := initUpgradeCommand()
 
 	uiService.On("CreateSelect", mock.Anything, mock.Anything).Return("Yes", nil).Once()
 	uiService.On("CreateSelect", mock.Anything, mock.Anything).Return("No", nil).Once()
@@ -51,7 +51,7 @@ func Test_upgradeCommand_Succeeds_WithInteractiveUpgrade(t *testing.T) {
 
 	mockSuccessfulUpgradeFlow(helperService, uiService, configService, packageService)
 
-	err := upgradeCommand(helperService, uiService, configService, packageService, false)
+	err := upgradeCommand(helperService, uiService, configService, packageService, helmService, false)
 
 	assert.Nil(t, err)
 	configService.AssertNumberOfCalls(t, "GetBbeConfig", 1)
@@ -71,7 +71,7 @@ func Test_upgradeCommand_Succeeds_WithInteractiveUpgrade(t *testing.T) {
 }
 
 func Test_upgradeCommand_Succeeds_WithNonInteractiveUpgrade(t *testing.T) {
-	helperService, uiService, configService, packageService := initUpgradeCommand()
+	helperService, uiService, configService, packageService, helmService := initUpgradeCommand()
 
 	bbeConfig := &models.BbeConfig{}
 	bbeConfig.Bbe.Cluster.Name = "test"
@@ -89,7 +89,7 @@ func Test_upgradeCommand_Succeeds_WithNonInteractiveUpgrade(t *testing.T) {
 
 	mockSuccessfulUpgradeFlow(helperService, uiService, configService, packageService)
 
-	err := upgradeCommand(helperService, uiService, configService, packageService, true)
+	err := upgradeCommand(helperService, uiService, configService, packageService, helmService, true)
 
 	assert.Nil(t, err)
 	configService.AssertNumberOfCalls(t, "GetBbeConfig", 1)
@@ -109,7 +109,7 @@ func Test_upgradeCommand_Succeeds_WithNonInteractiveUpgrade(t *testing.T) {
 }
 
 func Test_upgradeCommand_Fails_Prtial_UpdatesBbeConfig(t *testing.T) {
-	helperService, uiService, configService, packageService := initUpgradeCommand()
+	helperService, uiService, configService, packageService, helmService := initUpgradeCommand()
 
 	bbeConfig := &models.BbeConfig{}
 	bbeConfig.Bbe.Cluster.Name = "test"
@@ -130,7 +130,7 @@ func Test_upgradeCommand_Fails_Prtial_UpdatesBbeConfig(t *testing.T) {
 
 	mockSuccessfulUpgradeFlow(helperService, uiService, configService, packageService)
 
-	err := upgradeCommand(helperService, uiService, configService, packageService, true)
+	err := upgradeCommand(helperService, uiService, configService, packageService, helmService, true)
 
 	assert.NotNil(t, err)
 	configService.AssertNumberOfCalls(t, "GetBbeConfig", 1)
@@ -149,13 +149,14 @@ func Test_upgradeCommand_Fails_Prtial_UpdatesBbeConfig(t *testing.T) {
 	})
 }
 
-func initUpgradeCommand() (*mocks.MockHelperService, *mocks.MockUiService, *mocks.MockConfigService, *mocks.MockPackageService) {
+func initUpgradeCommand() (*mocks.MockHelperService, *mocks.MockUiService, *mocks.MockConfigService, *mocks.MockPackageService, *mocks.MockHelmService) {
 	helperService := &mocks.MockHelperService{}
 	uiService := &mocks.MockUiService{}
 	configService := &mocks.MockConfigService{}
 	packageService := &mocks.MockPackageService{}
+	helmService := &mocks.MockHelmService{}
 
-	return helperService, uiService, configService, packageService
+	return helperService, uiService, configService, packageService, helmService
 }
 
 func mockSuccessfulUpgradeFlow(_ *mocks.MockHelperService, uiService *mocks.MockUiService, configService *mocks.MockConfigService, packageService *mocks.MockPackageService) {
