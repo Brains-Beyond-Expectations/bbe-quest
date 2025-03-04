@@ -11,3 +11,6 @@ cover.out
 __debug_*
 coverage.out
 *.code-workspace
+
+# Binary
+cli/cli
