@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -40,7 +41,7 @@ func upgradeCommand(helperService interfaces.HelperServiceInterface, uiService i
 	bbeConfig, err := configService.GetBbeConfig(helperService)
 	if err != nil || bbeConfig.Bbe.Cluster.Name == "" {
 		logger.Info("No BBE cluster found, please run 'bbe setup' to create your cluster")
-		return nil
+		return errors.New("No BBE cluster found, please run 'bbe setup' to create your cluster")
 	}
 
 	installedPackages := bbeConfig.Bbe.Packages
