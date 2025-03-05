@@ -14,3 +14,6 @@ coverage.out
 
 # Binary
 cli/cli
+
+#vscode workspace
+bbe-quest
