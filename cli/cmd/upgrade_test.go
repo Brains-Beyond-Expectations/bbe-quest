@@ -30,6 +30,86 @@ func Test_upgradeCommand_Succeeds_WithNothingToDo(t *testing.T) {
 	})
 }
 
+func Test_upgradeCommand_Fails_With_No_Cluster_name(t *testing.T) {
+	helperService, uiService, configService, packageService, helmService := initUpgradeCommand()
+
+	bbeConfig := &models.BbeConfig{}
+	bbeConfig.Bbe.Cluster.Name = ""
+	bbeConfig.Bbe.Packages = []models.Package{
+		{
+			Name:    "package_one",
+			Version: "1.0.0",
+		},
+		{
+			Name:    "package_two",
+			Version: "1.0.0",
+		},
+	}
+	configService.On("GetBbeConfig", mock.Anything).Return(bbeConfig, nil)
+
+	err := upgradeCommand(helperService, uiService, configService, packageService, helmService, true)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "No BBE cluster found, please run 'bbe setup' to create your cluster")
+}
+
+func Test_upgradeCommand_Fails_With_Error_Getting_BBE_Config(t *testing.T) {
+	helperService, uiService, configService, packageService, helmService := initUpgradeCommand()
+
+	bbeConfig := &models.BbeConfig{}
+	bbeConfig.Bbe.Cluster.Name = ""
+	bbeConfig.Bbe.Packages = []models.Package{
+		{
+			Name:    "package_one",
+			Version: "1.0.0",
+		},
+		{
+			Name:    "package_two",
+			Version: "1.0.0",
+		},
+	}
+
+	fakeError := errors.New("Fake GetBbeConfig error")
+	configService.On("GetBbeConfig", mock.Anything).Return(bbeConfig, fakeError)
+
+	err := upgradeCommand(helperService, uiService, configService, packageService, helmService, true)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "No BBE cluster found, please run 'bbe setup' to create your cluster")
+}
+
+func Test_upgradeCommand_Fails_WhenCreateSelect(t *testing.T) {
+	helperService, uiService, configService, packageService, helmService := initUpgradeCommand()
+
+	fakeError := errors.New("Fake select error")
+	uiService.On("CreateSelect", mock.Anything, mock.Anything).Return("Yes", fakeError).Once()
+
+	bbeConfig := &models.BbeConfig{}
+	bbeConfig.Bbe.Cluster.Name = "test"
+	bbeConfig.Bbe.Packages = []models.Package{
+		{
+			Name:    "package_one",
+			Version: "1.0.0",
+		},
+		{
+			Name:    "package_two",
+			Version: "1.0.0",
+		},
+	}
+	configService.On("GetBbeConfig", mock.Anything).Return(bbeConfig, nil)
+
+	mockSuccessfulUpgradeFlow(helperService, uiService, configService, packageService)
+
+	err := upgradeCommand(helperService, uiService, configService, packageService, helmService, false)
+
+	assert.Error(t, err)
+	configService.AssertNumberOfCalls(t, "GetBbeConfig", 1)
+	packageService.AssertNumberOfCalls(t, "GetAll", 1)
+	uiService.AssertNumberOfCalls(t, "CreateSelect", 1)
+	packageService.AssertNumberOfCalls(t, "UpgradePackage", 0)
+
+}
+
 func Test_upgradeCommand_Succeeds_WithInteractiveUpgrade(t *testing.T) {
 	helperService, uiService, configService, packageService, helmService := initUpgradeCommand()
 
