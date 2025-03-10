@@ -2,7 +2,6 @@ package package_service
 
 import (
 	"fmt"
-	"os/exec"
 
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/interfaces"
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/models"
@@ -39,10 +38,6 @@ var packages = []models.BbePackage{
 	},
 }
 
-var execCommand = exec.Command
-
-type PackagesService struct{}
-
 func (packageService PackageService) GetAll() []models.Package {
 	var packageList []models.Package
 	for _, pkg := range packages {
@@ -66,10 +61,9 @@ func (packageService PackageService) InstallPackage(pkg models.Package, bbeConfi
 
 			return nil
 		}
-		return fmt.Errorf("Package `%s` not found", pkg.Name)
 	}
 
-	panic("Packages list is empty, something went very wrong")
+	return fmt.Errorf("Package `%s` not found", pkg.Name)
 }
 
 func (packageService PackageService) UpgradePackage(pkg models.Package, bbeConfig models.BbeConfig, helmService interfaces.HelmServiceInterface) error {
@@ -83,9 +77,9 @@ func (packageService PackageService) UpgradePackage(pkg models.Package, bbeConfi
 
 			return helmService.UpgradeChart(pkg.Name, p.HelmChart, p.PackageRepository.Name, p.HelmChartVersion, pkg.Name, bbeConfig.Bbe.Cluster.Context)
 		}
-		return fmt.Errorf("Package `%s` not found", pkg.Name)
 	}
-	panic("Packages list is empty, something went very wrong")
+
+	return fmt.Errorf("Package `%s` not found", pkg.Name)
 }
 
 func (packageService PackageService) UninstallPackage(pkg models.Package, bbeConfig models.BbeConfig, helmService interfaces.HelmServiceInterface) error {
@@ -93,8 +87,7 @@ func (packageService PackageService) UninstallPackage(pkg models.Package, bbeCon
 		if p.Package.Name == pkg.Name {
 			return helmService.UninstallChart(pkg.Name, pkg.Name, bbeConfig.Bbe.Cluster.Context)
 		}
-
-		return fmt.Errorf("Package `%s` not found", pkg.Name)
 	}
-	panic("Packages list is empty, something went very wrong")
+
+	return fmt.Errorf("Package `%s` not found", pkg.Name)
 }
