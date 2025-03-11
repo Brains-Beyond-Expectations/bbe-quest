@@ -33,7 +33,7 @@ func Test_InstallPackage_Fails_WhenPackageNotFound(t *testing.T) {
 
 	bbeConfig := models.BbeConfig{}
 	bbeConfig.Bbe.Cluster.Context = "test-context"
-	err := packagesService.InstallPackage(models.Package{Name: "not-a-real-package", Version: "0.1.3"}, bbeConfig, mockHelmService)
+	err := packagesService.InstallPackage(models.Package{Name: "not-a-real-package", Version: "4.12.0"}, bbeConfig, mockHelmService)
 
 	// Assert an error occurred
 	assert.Error(t, err)
@@ -50,7 +50,7 @@ func Test_InstallPackage_Fails_WhenHelmRepositoryNotFound(t *testing.T) {
 
 	bbeConfig := models.BbeConfig{}
 	bbeConfig.Bbe.Cluster.Context = "test-context"
-	err := packagesService.InstallPackage(models.Package{Name: "blocky", Version: "0.1.3"}, bbeConfig, mockHelmService)
+	err := packagesService.InstallPackage(models.Package{Name: "ingress-nginx", Version: "4.12.0"}, bbeConfig, mockHelmService)
 
 	// Assert an error occurred
 	assert.Error(t, err)
@@ -68,7 +68,7 @@ func Test_InstallPackage_Fails_WhenHelmInstallFails(t *testing.T) {
 
 	bbeConfig := models.BbeConfig{}
 	bbeConfig.Bbe.Cluster.Context = "test-context"
-	err := packagesService.InstallPackage(models.Package{Name: "blocky", Version: "0.1.3"}, bbeConfig, mockHelmService)
+	err := packagesService.InstallPackage(models.Package{Name: "ingress-nginx", Version: "4.12.0"}, bbeConfig, mockHelmService)
 
 	// Assert an error occurred
 	assert.Error(t, err)
@@ -85,7 +85,7 @@ func Test_InstallPackage_Succeeds(t *testing.T) {
 
 	bbeConfig := models.BbeConfig{}
 	bbeConfig.Bbe.Cluster.Context = "test-context"
-	err := packagesService.InstallPackage(models.Package{Name: "blocky", Version: "0.1.3"}, bbeConfig, mockHelmService)
+	err := packagesService.InstallPackage(models.Package{Name: "ingress-nginx", Version: "4.12.0"}, bbeConfig, mockHelmService)
 
 	// Assert an error occurred
 	assert.NoError(t, err)
@@ -99,7 +99,7 @@ func Test_InstallPackage_Skips_Already_Installed_And_Succeeds(t *testing.T) {
 	bbeConfig := models.BbeConfig{}
 	bbeConfig.Bbe.Cluster.Context = "test-context"
 
-	err := packagesService.InstallPackage(models.Package{Name: "blocky", Version: "0.1.3"}, bbeConfig, mockHelmService)
+	err := packagesService.InstallPackage(models.Package{Name: "ingress-nginx", Version: "4.12.0"}, bbeConfig, mockHelmService)
 
 	// Assert an error occurred
 	assert.NoError(t, err)
@@ -113,7 +113,7 @@ func Test_UpgradePackage_Fails_WhenPackageNotFound(t *testing.T) {
 
 	bbeConfig := models.BbeConfig{}
 	bbeConfig.Bbe.Cluster.Context = "test-context"
-	err := packagesService.UpgradePackage(models.Package{Name: packageName, Version: "0.1.3"}, bbeConfig, mockHelmService)
+	err := packagesService.UpgradePackage(models.Package{Name: packageName, Version: "4.12.0"}, bbeConfig, mockHelmService)
 
 	// Assert an error occurred
 	assert.Error(t, err)
@@ -129,7 +129,7 @@ func Test_UpgradePackage_Fails_WhenHelmRepositoryNotFound(t *testing.T) {
 
 	bbeConfig := models.BbeConfig{}
 	bbeConfig.Bbe.Cluster.Context = "test-context"
-	err := packagesService.UpgradePackage(models.Package{Name: "blocky", Version: "0.1.3"}, bbeConfig, mockHelmService)
+	err := packagesService.UpgradePackage(models.Package{Name: "ingress-nginx", Version: "4.12.0"}, bbeConfig, mockHelmService)
 
 	// Assert an error occurred
 	assert.Error(t, err)
@@ -146,7 +146,7 @@ func Test_UpgradePackage_Fails_WhenHelmUpgradeFails(t *testing.T) {
 
 	bbeConfig := models.BbeConfig{}
 	bbeConfig.Bbe.Cluster.Context = "test-context"
-	err := packagesService.UpgradePackage(models.Package{Name: "blocky", Version: "0.1.3"}, bbeConfig, mockHelmService)
+	err := packagesService.UpgradePackage(models.Package{Name: "ingress-nginx", Version: "4.12.0"}, bbeConfig, mockHelmService)
 
 	// Assert an error occurred
 	assert.Error(t, err)
@@ -162,7 +162,7 @@ func Test_UpgradePackage_Succeeds(t *testing.T) {
 
 	bbeConfig := models.BbeConfig{}
 	bbeConfig.Bbe.Cluster.Context = "test-context"
-	err := packagesService.UpgradePackage(models.Package{Name: "blocky", Version: "0.1.3"}, bbeConfig, mockHelmService)
+	err := packagesService.UpgradePackage(models.Package{Name: "ingress-nginx", Version: "4.12.0"}, bbeConfig, mockHelmService)
 
 	// Assert an error occurred
 	assert.NoError(t, err)
@@ -176,7 +176,7 @@ func Test_UninstallPackage_Fails_WhenPackageNotFound(t *testing.T) {
 
 	bbeConfig := models.BbeConfig{}
 	bbeConfig.Bbe.Cluster.Context = "test-context"
-	err := packagesService.UninstallPackage(models.Package{Name: packageName, Version: "0.1.3"}, bbeConfig, mockHelmService)
+	err := packagesService.UninstallPackage(models.Package{Name: packageName, Version: "4.12.0"}, bbeConfig, mockHelmService)
 
 	// Assert an error occurred
 	assert.Error(t, err)
@@ -192,7 +192,7 @@ func Test_UninstallPackage_Fails_WhenHelmFails(t *testing.T) {
 
 	bbeConfig := models.BbeConfig{}
 	bbeConfig.Bbe.Cluster.Context = "test-context"
-	err := packagesService.UninstallPackage(models.Package{Name: "blocky", Version: "0.1.3"}, bbeConfig, mockHelmService)
+	err := packagesService.UninstallPackage(models.Package{Name: "ingress-nginx", Version: "4.12.0"}, bbeConfig, mockHelmService)
 
 	// Assert an error occurred
 	assert.Error(t, err)
@@ -207,7 +207,7 @@ func Test_UninstallPackage_Succeeds(t *testing.T) {
 
 	bbeConfig := models.BbeConfig{}
 	bbeConfig.Bbe.Cluster.Context = "test-context"
-	err := packagesService.UninstallPackage(models.Package{Name: "blocky", Version: "0.1.3"}, bbeConfig, mockHelmService)
+	err := packagesService.UninstallPackage(models.Package{Name: "ingress-nginx", Version: "4.12.0"}, bbeConfig, mockHelmService)
 
 	// Assert an error occurred
 	assert.NoError(t, err)
