@@ -19,12 +19,12 @@ func Test_upgradeCommand_Succeeds_WithNothingToDo(t *testing.T) {
 
 	assert.Nil(t, err)
 	configService.AssertNumberOfCalls(t, "GetBbeConfig", 1)
-	packageService.AssertNumberOfCalls(t, "GetAll", 1)
+	packageService.AssertNumberOfCalls(t, "GetAllBundles", 1)
 	uiService.AssertNumberOfCalls(t, "CreateSelect", 0)
-	packageService.AssertNumberOfCalls(t, "UpgradePackage", 0)
-	configService.AssertCalled(t, "UpdateBbePackages", mock.Anything, []models.Package{
+	packageService.AssertNumberOfCalls(t, "UpgradeBundle", 0)
+	configService.AssertCalled(t, "UpdateBbeBundles", mock.Anything, []models.BbeBundle{
 		{
-			Name:    "package_one",
+			Name:    "bundle_one",
 			Version: "2.0.0",
 		},
 	})
@@ -35,13 +35,13 @@ func Test_upgradeCommand_Fails_With_No_Cluster_name(t *testing.T) {
 
 	bbeConfig := &models.BbeConfig{}
 	bbeConfig.Bbe.Cluster.Name = ""
-	bbeConfig.Bbe.Packages = []models.Package{
+	bbeConfig.Bbe.Bundles = []models.BbeBundle{
 		{
-			Name:    "package_one",
+			Name:    "bundle_one",
 			Version: "1.0.0",
 		},
 		{
-			Name:    "package_two",
+			Name:    "bundle_two",
 			Version: "1.0.0",
 		},
 	}
@@ -58,13 +58,13 @@ func Test_upgradeCommand_Fails_With_Error_Getting_BBE_Config(t *testing.T) {
 
 	bbeConfig := &models.BbeConfig{}
 	bbeConfig.Bbe.Cluster.Name = ""
-	bbeConfig.Bbe.Packages = []models.Package{
+	bbeConfig.Bbe.Bundles = []models.BbeBundle{
 		{
-			Name:    "package_one",
+			Name:    "bundle_one",
 			Version: "1.0.0",
 		},
 		{
-			Name:    "package_two",
+			Name:    "bundle_two",
 			Version: "1.0.0",
 		},
 	}
@@ -86,13 +86,13 @@ func Test_upgradeCommand_Fails_WhenCreateSelect(t *testing.T) {
 
 	bbeConfig := &models.BbeConfig{}
 	bbeConfig.Bbe.Cluster.Name = "test"
-	bbeConfig.Bbe.Packages = []models.Package{
+	bbeConfig.Bbe.Bundles = []models.BbeBundle{
 		{
-			Name:    "package_one",
+			Name:    "bundle_one",
 			Version: "1.0.0",
 		},
 		{
-			Name:    "package_two",
+			Name:    "bundle_two",
 			Version: "1.0.0",
 		},
 	}
@@ -104,9 +104,9 @@ func Test_upgradeCommand_Fails_WhenCreateSelect(t *testing.T) {
 
 	assert.Error(t, err)
 	configService.AssertNumberOfCalls(t, "GetBbeConfig", 1)
-	packageService.AssertNumberOfCalls(t, "GetAll", 1)
+	packageService.AssertNumberOfCalls(t, "GetAllBundles", 1)
 	uiService.AssertNumberOfCalls(t, "CreateSelect", 1)
-	packageService.AssertNumberOfCalls(t, "UpgradePackage", 0)
+	packageService.AssertNumberOfCalls(t, "UpgradeBundle", 0)
 
 }
 
@@ -117,13 +117,13 @@ func Test_upgradeCommand_Succeeds_WithInteractiveUpgrade(t *testing.T) {
 	uiService.On("CreateSelect", mock.Anything, mock.Anything).Return("No", nil).Once()
 	bbeConfig := &models.BbeConfig{}
 	bbeConfig.Bbe.Cluster.Name = "test"
-	bbeConfig.Bbe.Packages = []models.Package{
+	bbeConfig.Bbe.Bundles = []models.BbeBundle{
 		{
-			Name:    "package_one",
+			Name:    "bundle_one",
 			Version: "1.0.0",
 		},
 		{
-			Name:    "package_two",
+			Name:    "bundle_two",
 			Version: "1.0.0",
 		},
 	}
@@ -135,16 +135,16 @@ func Test_upgradeCommand_Succeeds_WithInteractiveUpgrade(t *testing.T) {
 
 	assert.Nil(t, err)
 	configService.AssertNumberOfCalls(t, "GetBbeConfig", 1)
-	packageService.AssertNumberOfCalls(t, "GetAll", 1)
+	packageService.AssertNumberOfCalls(t, "GetAllBundles", 1)
 	uiService.AssertNumberOfCalls(t, "CreateSelect", 2)
-	packageService.AssertNumberOfCalls(t, "UpgradePackage", 1)
-	configService.AssertCalled(t, "UpdateBbePackages", mock.Anything, []models.Package{
+	packageService.AssertNumberOfCalls(t, "UpgradeBundle", 1)
+	configService.AssertCalled(t, "UpdateBbeBundles", mock.Anything, []models.BbeBundle{
 		{
-			Name:    "package_one",
+			Name:    "bundle_one",
 			Version: "2.0.0",
 		},
 		{
-			Name:    "package_two",
+			Name:    "bundle_two",
 			Version: "1.0.0",
 		},
 	})
@@ -155,13 +155,13 @@ func Test_upgradeCommand_Succeeds_WithNonInteractiveUpgrade(t *testing.T) {
 
 	bbeConfig := &models.BbeConfig{}
 	bbeConfig.Bbe.Cluster.Name = "test"
-	bbeConfig.Bbe.Packages = []models.Package{
+	bbeConfig.Bbe.Bundles = []models.BbeBundle{
 		{
-			Name:    "package_one",
+			Name:    "bundle_one",
 			Version: "1.0.0",
 		},
 		{
-			Name:    "package_two",
+			Name:    "bundle_two",
 			Version: "1.0.0",
 		},
 	}
@@ -173,16 +173,16 @@ func Test_upgradeCommand_Succeeds_WithNonInteractiveUpgrade(t *testing.T) {
 
 	assert.Nil(t, err)
 	configService.AssertNumberOfCalls(t, "GetBbeConfig", 1)
-	packageService.AssertNumberOfCalls(t, "GetAll", 1)
+	packageService.AssertNumberOfCalls(t, "GetAllBundles", 1)
 	uiService.AssertNumberOfCalls(t, "CreateSelect", 0)
-	packageService.AssertNumberOfCalls(t, "UpgradePackage", 2)
-	configService.AssertCalled(t, "UpdateBbePackages", mock.Anything, []models.Package{
+	packageService.AssertNumberOfCalls(t, "UpgradeBundle", 2)
+	configService.AssertCalled(t, "UpdateBbeBundles", mock.Anything, []models.BbeBundle{
 		{
-			Name:    "package_one",
+			Name:    "bundle_one",
 			Version: "2.0.0",
 		},
 		{
-			Name:    "package_two",
+			Name:    "bundle_two",
 			Version: "3.0.0",
 		},
 	})
@@ -193,20 +193,20 @@ func Test_upgradeCommand_Fails_Prtial_UpdatesBbeConfig(t *testing.T) {
 
 	bbeConfig := &models.BbeConfig{}
 	bbeConfig.Bbe.Cluster.Name = "test"
-	bbeConfig.Bbe.Packages = []models.Package{
+	bbeConfig.Bbe.Bundles = []models.BbeBundle{
 		{
-			Name:    "package_one",
+			Name:    "bundle_one",
 			Version: "1.0.0",
 		},
 		{
-			Name:    "package_two",
+			Name:    "bundle_two",
 			Version: "1.0.0",
 		},
 	}
 	configService.On("GetBbeConfig", mock.Anything).Return(bbeConfig, nil)
 
-	packageService.On("UpgradePackage", mock.Anything).Return(nil).Once()
-	packageService.On("UpgradePackage", mock.Anything).Return(errors.New("test error")).Once()
+	packageService.On("UpgradeBundle", mock.Anything).Return(nil).Once()
+	packageService.On("UpgradeBundle", mock.Anything).Return(errors.New("test error")).Once()
 
 	mockSuccessfulUpgradeFlow(helperService, uiService, configService, packageService)
 
@@ -214,16 +214,16 @@ func Test_upgradeCommand_Fails_Prtial_UpdatesBbeConfig(t *testing.T) {
 
 	assert.NotNil(t, err)
 	configService.AssertNumberOfCalls(t, "GetBbeConfig", 1)
-	packageService.AssertNumberOfCalls(t, "GetAll", 1)
+	packageService.AssertNumberOfCalls(t, "GetAllBundles", 1)
 	uiService.AssertNumberOfCalls(t, "CreateSelect", 0)
-	packageService.AssertNumberOfCalls(t, "UpgradePackage", 2)
-	configService.AssertCalled(t, "UpdateBbePackages", mock.Anything, []models.Package{
+	packageService.AssertNumberOfCalls(t, "UpgradeBundle", 2)
+	configService.AssertCalled(t, "UpdateBbeBundles", mock.Anything, []models.BbeBundle{
 		{
-			Name:    "package_one",
+			Name:    "bundle_one",
 			Version: "2.0.0",
 		},
 		{
-			Name:    "package_two",
+			Name:    "bundle_two",
 			Version: "1.0.0",
 		},
 	})
@@ -242,24 +242,24 @@ func initUpgradeCommand() (*mocks.MockHelperService, *mocks.MockUiService, *mock
 func mockSuccessfulUpgradeFlow(_ *mocks.MockHelperService, uiService *mocks.MockUiService, configService *mocks.MockConfigService, packageService *mocks.MockPackageService) {
 	bbeConfig := &models.BbeConfig{}
 	bbeConfig.Bbe.Cluster.Name = "test"
-	bbeConfig.Bbe.Packages = []models.Package{
+	bbeConfig.Bbe.Bundles = []models.BbeBundle{
 		{
-			Name:    "package_one",
+			Name:    "bundle_one",
 			Version: "2.0.0",
 		},
 	}
 	configService.On("GetBbeConfig", mock.Anything).Return(bbeConfig, nil)
-	configService.On("UpdateBbePackages", mock.Anything, mock.Anything).Return(nil)
+	configService.On("UpdateBbeBundles", mock.Anything, mock.Anything).Return(nil)
 
-	packageService.On("GetAll").Return([]models.Package{
+	packageService.On("GetAllBundles").Return([]models.BbeBundle{
 		{
-			Name:    "package_one",
+			Name:    "bundle_one",
 			Version: "2.0.0",
 		},
 		{
-			Name:    "package_two",
+			Name:    "bundle_two",
 			Version: "3.0.0",
 		},
 	})
-	packageService.On("UpgradePackage", mock.Anything).Return(nil)
+	packageService.On("UpgradeBundle", mock.Anything).Return(nil)
 }

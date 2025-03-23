@@ -10,22 +10,22 @@ type MockPackageService struct {
 	mock.Mock
 }
 
-func (m *MockPackageService) GetAll() []models.Package {
+func (m *MockPackageService) GetAllBundles() []models.BbeBundle {
 	args := m.Called()
-	return args.Get(0).([]models.Package)
+	return args.Get(0).([]models.BbeBundle)
 }
 
-func (m *MockPackageService) InstallPackage(pkg models.Package, bbeConfig models.BbeConfig, helmService interfaces.HelmServiceInterface) error {
-	args := m.Called(pkg)
+func (m *MockPackageService) InstallBundle(bundle models.BbeBundle, bbeConfig models.BbeConfig, helmService interfaces.HelmServiceInterface) error {
+	args := m.Called(bundle)
 	return args.Error(0)
 }
 
-func (m *MockPackageService) UpgradePackage(pkg models.Package, bbeConfig models.BbeConfig, helmService interfaces.HelmServiceInterface) error {
-	args := m.Called(pkg)
+func (m *MockPackageService) UpgradeBundle(bundle models.BbeBundle, bbeConfig models.BbeConfig, helmService interfaces.HelmServiceInterface) error {
+	args := m.Called(bundle)
 	return args.Error(0)
 }
 
-func (m *MockPackageService) UninstallPackage(pkg models.Package, bbeConfig models.BbeConfig, helmService interfaces.HelmServiceInterface) error {
-	args := m.Called(pkg)
+func (m *MockPackageService) UninstallBundle(bundle models.BbeBundle, bbeConfig models.BbeConfig, helmService interfaces.HelmServiceInterface) error {
+	args := m.Called(bundle)
 	return args.Error(0)
 }

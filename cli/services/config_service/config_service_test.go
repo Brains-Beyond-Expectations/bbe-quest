@@ -337,7 +337,7 @@ func Test_UpdateBbeAwsBucketName_Fails_WhenUnableTo_GetBbeConfig(t *testing.T) {
 	mockHelperService.AssertNumberOfCalls(t, "GetConfigDir", 1)
 }
 
-func Test_UpdateBbePackages_Succeeds(t *testing.T) {
+func Test_UpdateBbeBundles_Succeeds(t *testing.T) {
 	configService := ConfigService{}
 
 	mockHelperService := &mocks.MockHelperService{}
@@ -347,7 +347,7 @@ func Test_UpdateBbePackages_Succeeds(t *testing.T) {
 
 	mockOs := &mocks.MockOs{}
 	config := models.BbeConfig{}
-	config.Bbe.Packages = []models.Package{{Name: "package1"}, {Name: "package2"}}
+	config.Bbe.Bundles = []models.BbeBundle{{Name: "bundle1"}, {Name: "bundle2"}}
 	config.Bbe.Storage.Aws.BucketName = "testBucket"
 	yamlFile, err := yaml.Marshal(config)
 	if err != nil {
@@ -360,21 +360,21 @@ func Test_UpdateBbePackages_Succeeds(t *testing.T) {
 	osWriteFile = mockOs.WriteFile
 	osReadFile = mockOs.ReadFile
 
-	err = configService.UpdateBbePackages(mockHelperService, []models.Package{{Name: "package1"}, {Name: "package2"}})
+	err = configService.UpdateBbeBundles(mockHelperService, []models.BbeBundle{{Name: "bundle1"}, {Name: "bundle2"}})
 
 	assert.NoError(t, err)
 	mockHelperService.AssertNumberOfCalls(t, "CheckIfFileExists", 1)
 	mockHelperService.AssertNumberOfCalls(t, "GetConfigDir", 3)
 }
 
-func Test_UpdateBbePackages_Fails_WhenUnableTo_GetBbeConfig(t *testing.T) {
+func Test_UpdateBbeBundles_Fails_WhenUnableTo_GetBbeConfig(t *testing.T) {
 	configService := ConfigService{}
 
 	mockHelperService := &mocks.MockHelperService{}
 	mockHelperService.On("CheckIfFileExists", fmt.Sprintf("/%s", constants.BbeConfigFile)).Return(nil, false)
 	mockHelperService.On("GetConfigDir").Return("")
 
-	err := configService.UpdateBbePackages(mockHelperService, []models.Package{{Name: "package1"}, {Name: "package2"}})
+	err := configService.UpdateBbeBundles(mockHelperService, []models.BbeBundle{{Name: "bundle1"}, {Name: "bundle2"}})
 
 	assert.Error(t, err)
 	mockHelperService.AssertNumberOfCalls(t, "CheckIfFileExists", 1)
@@ -603,10 +603,10 @@ func Test_WriteBbeConfig_Fails_On_MkDir(t *testing.T) {
 	// Create the configService instance
 	configService := ConfigService{}
 
-	// Prepare the bbeConfig with non-empty and empty packages
+	// Prepare the bbeConfig with non-empty and empty bundles
 	bbeConfig := &models.BbeConfig{}
 	bbeConfig.Bbe.Cluster.Name = "test"
-	bbeConfig.Bbe.Packages = []models.Package{
+	bbeConfig.Bbe.Bundles = []models.BbeBundle{
 		{
 			Name:    "package_one",
 			Version: "2.0.0",
@@ -641,10 +641,10 @@ func Test_WriteBbeConfig_Fails_On_OsWrite(t *testing.T) {
 	// Create the configService instance
 	configService := ConfigService{}
 
-	// Prepare the bbeConfig with non-empty and empty packages
+	// Prepare the bbeConfig with non-empty and empty bundles
 	bbeConfig := &models.BbeConfig{}
 	bbeConfig.Bbe.Cluster.Name = "test"
-	bbeConfig.Bbe.Packages = []models.Package{
+	bbeConfig.Bbe.Bundles = []models.BbeBundle{
 		{
 			Name:    "package_one",
 			Version: "2.0.0",
@@ -684,7 +684,7 @@ func Test_WriteBbeConfig_Fails_On_Yaml_Marshal(t *testing.T) {
 	// Prepare the bbeConfig with non-empty and empty packages
 	bbeConfig := &models.BbeConfig{}
 	bbeConfig.Bbe.Cluster.Name = "test"
-	bbeConfig.Bbe.Packages = []models.Package{
+	bbeConfig.Bbe.Bundles = []models.BbeBundle{
 		{
 			Name:    "package_one",
 			Version: "2.0.0",

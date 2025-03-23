@@ -20,15 +20,15 @@ func Test_installCommand_Succeeds(t *testing.T) {
 	assert.Nil(t, err)
 	uiService.AssertNumberOfCalls(t, "CreateMultiChoose", 1)
 	configService.AssertNumberOfCalls(t, "GetBbeConfig", 1)
-	configService.AssertNumberOfCalls(t, "UpdateBbePackages", 2)
-	packageService.AssertNumberOfCalls(t, "GetAll", 1)
-	packageService.AssertNumberOfCalls(t, "UninstallPackage", 1)
-	packageService.AssertCalled(t, "UninstallPackage", models.Package{
-		Name: "package_to_be_removed",
+	configService.AssertNumberOfCalls(t, "UpdateBbeBundles", 2)
+	packageService.AssertNumberOfCalls(t, "GetAllBundles", 1)
+	packageService.AssertNumberOfCalls(t, "UninstallBundle", 1)
+	packageService.AssertCalled(t, "UninstallBundle", models.BbeBundle{
+		Name: "bundle_to_be_removed",
 	})
-	packageService.AssertNumberOfCalls(t, "InstallPackage", 2)
-	packageService.AssertCalled(t, "InstallPackage", models.Package{
-		Name: "package_to_be_installed",
+	packageService.AssertNumberOfCalls(t, "InstallBundle", 2)
+	packageService.AssertCalled(t, "InstallBundle", models.BbeBundle{
+		Name: "bundle_to_be_installed",
 	})
 }
 
@@ -44,16 +44,16 @@ func Test_installCommand_Fails_WithNoCluster(t *testing.T) {
 	assert.Nil(t, err)
 	uiService.AssertNumberOfCalls(t, "CreateMultiChoose", 0)
 	configService.AssertNumberOfCalls(t, "GetBbeConfig", 1)
-	configService.AssertNumberOfCalls(t, "UpdateBbePackages", 0)
-	packageService.AssertNumberOfCalls(t, "GetAll", 0)
-	packageService.AssertNumberOfCalls(t, "UninstallPackage", 0)
-	packageService.AssertNumberOfCalls(t, "InstallPackage", 0)
+	configService.AssertNumberOfCalls(t, "UpdateBbeBundles", 0)
+	packageService.AssertNumberOfCalls(t, "GetAllBundles", 0)
+	packageService.AssertNumberOfCalls(t, "UninstallBundle", 0)
+	packageService.AssertNumberOfCalls(t, "InstallBundle", 0)
 }
 
-func Test_installCommand_Succeeds_ProceedsWhenFailingToUninstallPackages(t *testing.T) {
+func Test_installCommand_Succeeds_ProceedsWhenFailingToUninstallBundles(t *testing.T) {
 	helperService, uiService, configService, packageService, helmService := initInstallCommand()
 
-	packageService.On("UninstallPackage", mock.Anything).Return(errors.New("test error"))
+	packageService.On("UninstallBundle", mock.Anything).Return(errors.New("test error"))
 
 	mockSuccessfulInstallFlow(helperService, uiService, configService, packageService)
 
@@ -62,22 +62,22 @@ func Test_installCommand_Succeeds_ProceedsWhenFailingToUninstallPackages(t *test
 	assert.Nil(t, err)
 	uiService.AssertNumberOfCalls(t, "CreateMultiChoose", 1)
 	configService.AssertNumberOfCalls(t, "GetBbeConfig", 1)
-	configService.AssertNumberOfCalls(t, "UpdateBbePackages", 2)
-	packageService.AssertNumberOfCalls(t, "GetAll", 1)
-	packageService.AssertNumberOfCalls(t, "UninstallPackage", 1)
-	packageService.AssertCalled(t, "UninstallPackage", models.Package{
-		Name: "package_to_be_removed",
+	configService.AssertNumberOfCalls(t, "UpdateBbeBundles", 2)
+	packageService.AssertNumberOfCalls(t, "GetAllBundles", 1)
+	packageService.AssertNumberOfCalls(t, "UninstallBundle", 1)
+	packageService.AssertCalled(t, "UninstallBundle", models.BbeBundle{
+		Name: "bundle_to_be_removed",
 	})
-	packageService.AssertNumberOfCalls(t, "InstallPackage", 2)
-	packageService.AssertCalled(t, "InstallPackage", models.Package{
-		Name: "package_to_be_installed",
+	packageService.AssertNumberOfCalls(t, "InstallBundle", 2)
+	packageService.AssertCalled(t, "InstallBundle", models.BbeBundle{
+		Name: "bundle_to_be_installed",
 	})
 }
 
 func Test_installCommand_Fails_WhenFailingToUpdateBbeConfigurationOnUninstall(t *testing.T) {
 	helperService, uiService, configService, packageService, helmService := initInstallCommand()
 
-	configService.On("UpdateBbePackages", mock.Anything, mock.Anything).Return(errors.New("test error"))
+	configService.On("UpdateBbeBundles", mock.Anything, mock.Anything).Return(errors.New("test error"))
 
 	mockSuccessfulInstallFlow(helperService, uiService, configService, packageService)
 
@@ -86,19 +86,19 @@ func Test_installCommand_Fails_WhenFailingToUpdateBbeConfigurationOnUninstall(t 
 	assert.NotNil(t, err)
 	uiService.AssertNumberOfCalls(t, "CreateMultiChoose", 1)
 	configService.AssertNumberOfCalls(t, "GetBbeConfig", 1)
-	configService.AssertNumberOfCalls(t, "UpdateBbePackages", 1)
-	packageService.AssertNumberOfCalls(t, "GetAll", 1)
-	packageService.AssertNumberOfCalls(t, "UninstallPackage", 1)
-	packageService.AssertCalled(t, "UninstallPackage", models.Package{
-		Name: "package_to_be_removed",
+	configService.AssertNumberOfCalls(t, "UpdateBbeBundles", 1)
+	packageService.AssertNumberOfCalls(t, "GetAllBundles", 1)
+	packageService.AssertNumberOfCalls(t, "UninstallBundle", 1)
+	packageService.AssertCalled(t, "UninstallBundle", models.BbeBundle{
+		Name: "bundle_to_be_removed",
 	})
-	packageService.AssertNumberOfCalls(t, "InstallPackage", 0)
+	packageService.AssertNumberOfCalls(t, "InstallBundle", 0)
 }
 
-func Test_installCommand_Fails_WhenFailingToInstallPackage(t *testing.T) {
+func Test_installCommand_Fails_WhenFailingToInstallBundle(t *testing.T) {
 	helperService, uiService, configService, packageService, helmService := initInstallCommand()
 
-	packageService.On("InstallPackage", mock.Anything).Return(errors.New("test error"))
+	packageService.On("InstallBundle", mock.Anything).Return(errors.New("test error"))
 
 	mockSuccessfulInstallFlow(helperService, uiService, configService, packageService)
 
@@ -107,20 +107,20 @@ func Test_installCommand_Fails_WhenFailingToInstallPackage(t *testing.T) {
 	assert.NotNil(t, err)
 	uiService.AssertNumberOfCalls(t, "CreateMultiChoose", 1)
 	configService.AssertNumberOfCalls(t, "GetBbeConfig", 1)
-	configService.AssertNumberOfCalls(t, "UpdateBbePackages", 1)
-	packageService.AssertNumberOfCalls(t, "GetAll", 1)
-	packageService.AssertNumberOfCalls(t, "UninstallPackage", 1)
-	packageService.AssertCalled(t, "UninstallPackage", models.Package{
-		Name: "package_to_be_removed",
+	configService.AssertNumberOfCalls(t, "UpdateBbeBundles", 1)
+	packageService.AssertNumberOfCalls(t, "GetAllBundles", 1)
+	packageService.AssertNumberOfCalls(t, "UninstallBundle", 1)
+	packageService.AssertCalled(t, "UninstallBundle", models.BbeBundle{
+		Name: "bundle_to_be_removed",
 	})
-	packageService.AssertNumberOfCalls(t, "InstallPackage", 1)
+	packageService.AssertNumberOfCalls(t, "InstallBundle", 1)
 }
 
 func Test_installCommand_Fails_WhenFailingToUpdateBbeConfigurationOnInstall(t *testing.T) {
 	helperService, uiService, configService, packageService, helmService := initInstallCommand()
 
-	configService.On("UpdateBbePackages", mock.Anything, mock.Anything).Return(nil).Once()
-	configService.On("UpdateBbePackages", mock.Anything, mock.Anything).Return(errors.New("test error"))
+	configService.On("UpdateBbeBundles", mock.Anything, mock.Anything).Return(nil).Once()
+	configService.On("UpdateBbeBundles", mock.Anything, mock.Anything).Return(errors.New("test error"))
 
 	mockSuccessfulInstallFlow(helperService, uiService, configService, packageService)
 
@@ -129,13 +129,13 @@ func Test_installCommand_Fails_WhenFailingToUpdateBbeConfigurationOnInstall(t *t
 	assert.NotNil(t, err)
 	uiService.AssertNumberOfCalls(t, "CreateMultiChoose", 1)
 	configService.AssertNumberOfCalls(t, "GetBbeConfig", 1)
-	configService.AssertNumberOfCalls(t, "UpdateBbePackages", 2)
-	packageService.AssertNumberOfCalls(t, "GetAll", 1)
-	packageService.AssertNumberOfCalls(t, "UninstallPackage", 1)
-	packageService.AssertCalled(t, "UninstallPackage", models.Package{
-		Name: "package_to_be_removed",
+	configService.AssertNumberOfCalls(t, "UpdateBbeBundles", 2)
+	packageService.AssertNumberOfCalls(t, "GetAllBundles", 1)
+	packageService.AssertNumberOfCalls(t, "UninstallBundle", 1)
+	packageService.AssertCalled(t, "UninstallBundle", models.BbeBundle{
+		Name: "bundle_to_be_removed",
 	})
-	packageService.AssertNumberOfCalls(t, "InstallPackage", 2)
+	packageService.AssertNumberOfCalls(t, "InstallBundle", 2)
 }
 
 func initInstallCommand() (*mocks.MockHelperService, *mocks.MockUiService, *mocks.MockConfigService, *mocks.MockPackageService, *mocks.MockHelmService) {
@@ -150,37 +150,37 @@ func initInstallCommand() (*mocks.MockHelperService, *mocks.MockUiService, *mock
 
 func mockSuccessfulInstallFlow(_ *mocks.MockHelperService, uiService *mocks.MockUiService, configService *mocks.MockConfigService, packageService *mocks.MockPackageService) {
 	uiService.On("CreateMultiChoose", mock.Anything, mock.Anything, mock.Anything).Return([]string{
-		"package_always_installed",
-		"package_to_be_installed",
+		"bundle_always_installed",
+		"bundle_to_be_installed",
 	}, nil)
 
 	bbeConfig := &models.BbeConfig{}
 	bbeConfig.Bbe.Cluster.Name = "test"
-	bbeConfig.Bbe.Packages = []models.Package{
+	bbeConfig.Bbe.Bundles = []models.BbeBundle{
 		{
-			Name: "package_always_installed",
+			Name: "bundle_always_installed",
 		},
 		{
-			Name: "package_to_be_removed",
+			Name: "bundle_to_be_removed",
 		},
 	}
 	configService.On("GetBbeConfig", mock.Anything).Return(bbeConfig, nil)
-	configService.On("UpdateBbePackages", mock.Anything, mock.Anything).Return(nil)
+	configService.On("UpdateBbeBundles", mock.Anything, mock.Anything).Return(nil)
 
-	packageService.On("GetAll").Return([]models.Package{
+	packageService.On("GetAllBundles").Return([]models.BbeBundle{
 		{
-			Name: "package_always_installed",
+			Name: "bundle_always_installed",
 		},
 		{
-			Name: "package_to_be_removed",
+			Name: "bundle_to_be_removed",
 		},
 		{
-			Name: "package_to_be_installed",
+			Name: "bundle_to_be_installed",
 		},
 		{
-			Name: "package_to_be_ignored",
+			Name: "bundle_to_be_ignored",
 		},
 	})
-	packageService.On("UninstallPackage", mock.Anything).Return(nil)
-	packageService.On("InstallPackage", mock.Anything).Return(nil)
+	packageService.On("UninstallBundle", mock.Anything).Return(nil)
+	packageService.On("InstallBundle", mock.Anything).Return(nil)
 }
