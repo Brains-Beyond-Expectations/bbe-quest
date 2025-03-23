@@ -103,13 +103,13 @@ func (config ConfigService) UpdateBbeAwsBucketName(helperService interfaces.Help
 	return config.writeBbeConfig(helperService, bbeConfig)
 }
 
-func (config ConfigService) UpdateBbePackages(helperService interfaces.HelperServiceInterface, packages []models.Package) error {
+func (config ConfigService) UpdateBbeBundles(helperService interfaces.HelperServiceInterface, bundles []models.BbeBundle) error {
 	bbeConfig, err := config.GetBbeConfig(helperService)
 	if err != nil {
 		return err
 	}
 
-	bbeConfig.Bbe.Packages = packages
+	bbeConfig.Bbe.Bundles = bundles
 
 	return config.writeBbeConfig(helperService, bbeConfig)
 }
@@ -117,14 +117,14 @@ func (config ConfigService) UpdateBbePackages(helperService interfaces.HelperSer
 func (config ConfigService) writeBbeConfig(helperService interfaces.HelperServiceInterface, bbeConfig *models.BbeConfig) error {
 	fileLocation := fmt.Sprintf("%s/%s", helperService.GetConfigDir(), constants.BbeConfigFile)
 
-	// Filter out any empty packages to avoid writing them to the config file
-	var filteredPackages []models.Package
-	for _, pkg := range bbeConfig.Bbe.Packages {
+	// Filter out any empty bundles to avoid writing them to the config file
+	var filteredBundles []models.BbeBundle
+	for _, pkg := range bbeConfig.Bbe.Bundles {
 		if pkg.Name != "" || pkg.Version != "" {
-			filteredPackages = append(filteredPackages, pkg)
+			filteredBundles = append(filteredBundles, pkg)
 		}
 	}
-	bbeConfig.Bbe.Packages = filteredPackages
+	bbeConfig.Bbe.Bundles = filteredBundles
 
 	yamlFile, err := yamlMarshal(bbeConfig)
 	if err != nil {

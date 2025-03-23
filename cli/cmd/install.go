@@ -19,7 +19,7 @@ import (
 var installCmd = &cobra.Command{
 	Use:     "install",
 	Aliases: []string{"i"},
-	Short:   "Install BBE packages",
+	Short:   "Install BBE bundles",
 	Args:    cobra.ExactArgs(0),
 	Run: func(cmd *cobra.Command, args []string) {
 		helperService := helper_service.HelperService{}
@@ -47,79 +47,79 @@ func installCommand(helperService interfaces.HelperServiceInterface, uiService i
 		return nil
 	}
 
-	allPackages := packageService.GetAll()
+	allBundles := packageService.GetAllBundles()
 
-	selectedIndexes, packageList := buildPackageIndex(allPackages, *bbeConfig)
+	selectedIndexes, bundleList := buildBundleIndex(allBundles, *bbeConfig)
 
-	chosenPackages, err := uiService.CreateMultiChoose("Select packages to install", packageList, selectedIndexes)
+	chosenBundles, err := uiService.CreateMultiChoose("Select bundles to install", bundleList, selectedIndexes)
 	if err != nil {
 		panic(err)
 	}
 
-	packagesToInstall, packagesToUninstall := diffPackages(allPackages, chosenPackages)
+	bundlesToInstall, bundlesToUninstall := diffBundles(allBundles, chosenBundles)
 
 	updatedBbeConfig := *bbeConfig
-	updatedBbeConfig.Bbe.Packages = bbeConfig.Bbe.Packages
+	updatedBbeConfig.Bbe.Bundles = bbeConfig.Bbe.Bundles
 
-	err = uninstallPackages(helperService, configService, packageService, helmService, updatedBbeConfig, packagesToUninstall)
+	err = uninstallBundles(helperService, configService, packageService, helmService, updatedBbeConfig, bundlesToUninstall)
 	if err != nil {
-		return fmt.Errorf("Failed to uninstall packages: %w", err)
+		return fmt.Errorf("Failed to uninstall bundles: %w", err)
 	}
 
-	err = installPackages(helperService, configService, packageService, helmService, updatedBbeConfig, packagesToInstall)
+	err = installBundles(helperService, configService, packageService, helmService, updatedBbeConfig, bundlesToInstall)
 	if err != nil {
-		return fmt.Errorf("Failed to install packages: %w", err)
+		return fmt.Errorf("Failed to install bundles: %w", err)
 	}
 
 	return nil
 }
 
-func buildPackageIndex(allPackages []models.Package, bbeConfig models.BbeConfig) (selectedIndexes []int, packageList []string) {
-	for packageIndex, pkg := range allPackages {
-		packageList = append(packageList, pkg.Name)
-		for _, installedPkg := range bbeConfig.Bbe.Packages {
-			if installedPkg.Name == pkg.Name {
-				selectedIndexes = append(selectedIndexes, packageIndex)
+func buildBundleIndex(allBundles []models.BbeBundle, bbeConfig models.BbeConfig) (selectedIndexes []int, bundleList []string) {
+	for bundleIndex, bundle := range allBundles {
+		bundleList = append(bundleList, bundle.Name)
+		for _, installedBundle := range bbeConfig.Bbe.Bundles {
+			if installedBundle.Name == bundle.Name {
+				selectedIndexes = append(selectedIndexes, bundleIndex)
 			}
 		}
 	}
 
-	return selectedIndexes, packageList
+	return selectedIndexes, bundleList
 }
 
-func diffPackages(allPackages []models.Package, chosenPackages []string) (packagesToInstall []models.Package, packagesToUninstall []models.Package) {
-	for _, pkg := range allPackages {
+func diffBundles(allBundles []models.BbeBundle, chosenBundles []string) (bundlesToInstall []models.BbeBundle, bundlesToUninstall []models.BbeBundle) {
+	for _, pkg := range allBundles {
 		found := false
-		for _, chosenPackage := range chosenPackages {
-			if pkg.Name == chosenPackage {
+		for _, chosenBundle := range chosenBundles {
+			if pkg.Name == chosenBundle {
 				found = true
-				packagesToInstall = append(packagesToInstall, pkg)
+				bundlesToInstall = append(bundlesToInstall, pkg)
 			}
 		}
 
 		if !found {
-			packagesToUninstall = append(packagesToUninstall, pkg)
+			bundlesToUninstall = append(bundlesToUninstall, pkg)
 		}
 	}
 
-	return packagesToInstall, packagesToUninstall
+	return bundlesToInstall, bundlesToUninstall
 }
 
-func uninstallPackages(helperService interfaces.HelperServiceInterface, configService interfaces.ConfigServiceInterface, packageService interfaces.PackageServiceInterface, helmService interfaces.HelmServiceInterface, updatedBbeConfig models.BbeConfig, uninstalledPackages []models.Package) error {
-	for _, pkg := range uninstalledPackages {
-		for i, existingPkg := range updatedBbeConfig.Bbe.Packages {
-			if existingPkg.Name == pkg.Name {
-				err := packageService.UninstallPackage(pkg, updatedBbeConfig, helmService)
+func uninstallBundles(helperService interfaces.HelperServiceInterface, configService interfaces.ConfigServiceInterface, packageService interfaces.PackageServiceInterface, helmService interfaces.HelmServiceInterface, updatedBbeConfig models.BbeConfig, uninstalledBundles []models.BbeBundle) error {
+	for _, bundle := range uninstalledBundles {
+		for i, existingPkg := range updatedBbeConfig.Bbe.Bundles {
+			if existingPkg.Name == bundle.Name {
+				err := packageService.UninstallBundle(bundle, updatedBbeConfig, helmService)
 				if err != nil {
-					logger.Error("Failed to uninstall package", err)
+					logger.Error("Failed to uninstall bundle", err)
 					continue
 				}
-				updatedBbeConfig.Bbe.Packages = slices.Delete(updatedBbeConfig.Bbe.Packages, i, i+1)
+				updatedBbeConfig.Bbe.Bundles = slices.Delete(updatedBbeConfig.Bbe.Bundles, i, i+1)
 				break
 			}
 		}
 	}
-	err := configService.UpdateBbePackages(helperService, updatedBbeConfig.Bbe.Packages)
+	err := configService.UpdateBbeBundles(helperService, updatedBbeConfig.Bbe.Bundles)
 	if err != nil {
 		return fmt.Errorf("Failed to update BBE configuration: %w", err)
 	}
@@ -127,26 +127,26 @@ func uninstallPackages(helperService interfaces.HelperServiceInterface, configSe
 	return nil
 }
 
-func installPackages(helperService interfaces.HelperServiceInterface, configService interfaces.ConfigServiceInterface, packageService interfaces.PackageServiceInterface, helmService interfaces.HelmServiceInterface, updatedBbeConfig models.BbeConfig, installedPackages []models.Package) error {
-	for _, pkg := range installedPackages {
-		err := packageService.InstallPackage(pkg, updatedBbeConfig, helmService)
+func installBundles(helperService interfaces.HelperServiceInterface, configService interfaces.ConfigServiceInterface, packageService interfaces.PackageServiceInterface, helmService interfaces.HelmServiceInterface, updatedBbeConfig models.BbeConfig, installedBundles []models.BbeBundle) error {
+	for _, bundle := range installedBundles {
+		err := packageService.InstallBundle(bundle, updatedBbeConfig, helmService)
 		if err != nil {
-			return fmt.Errorf("Failed to install package: %w", err)
+			return fmt.Errorf("Failed to install bundle: %w", err)
 		}
 
 		found := false
-		for i, existingPkg := range updatedBbeConfig.Bbe.Packages {
-			if existingPkg.Name == pkg.Name {
-				updatedBbeConfig.Bbe.Packages[i] = pkg
+		for i, existingBundle := range updatedBbeConfig.Bbe.Bundles {
+			if existingBundle.Name == bundle.Name {
+				updatedBbeConfig.Bbe.Bundles[i] = bundle
 				found = true
 				break
 			}
 		}
 		if !found {
-			updatedBbeConfig.Bbe.Packages = append(updatedBbeConfig.Bbe.Packages, pkg)
+			updatedBbeConfig.Bbe.Bundles = append(updatedBbeConfig.Bbe.Bundles, bundle)
 		}
 	}
-	err := configService.UpdateBbePackages(helperService, updatedBbeConfig.Bbe.Packages)
+	err := configService.UpdateBbeBundles(helperService, updatedBbeConfig.Bbe.Bundles)
 	if err != nil {
 		return fmt.Errorf("Failed to update BBE configuration: %w", err)
 	}

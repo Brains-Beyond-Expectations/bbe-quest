@@ -44,25 +44,25 @@ func upgradeCommand(helperService interfaces.HelperServiceInterface, uiService i
 		return errors.New("No BBE cluster found, please run 'bbe setup' to create your cluster")
 	}
 
-	installedPackages := bbeConfig.Bbe.Packages
-	allPackages := packageService.GetAll()
+	installedBundles := bbeConfig.Bbe.Bundles
+	allBundles := packageService.GetAllBundles()
 
 	defer func() {
-		err := configService.UpdateBbePackages(helperService, installedPackages)
+		err := configService.UpdateBbeBundles(helperService, installedBundles)
 		if err != nil {
-			logger.Error("Failed to update BBE packages", err)
+			logger.Error("Failed to update BBE bundles", err)
 		}
 	}()
 
-	// Go through our currently installed packages and see if a newer version is available
-	for i, installedPackage := range installedPackages {
-		logger.Info(fmt.Sprintf("Checking for newer version of package %s...", installedPackage.Name))
-		for _, pkg := range allPackages {
-			if installedPackage.Name == pkg.Name {
-				if installedPackage.Version != pkg.Version {
+	// Go through our currently installed bundles and see if a newer version is available
+	for i, installedBundle := range installedBundles {
+		logger.Info(fmt.Sprintf("Checking for newer version of bundle %s...", installedBundle.Name))
+		for _, bundle := range allBundles {
+			if installedBundle.Name == bundle.Name {
+				if installedBundle.Version != bundle.Version {
 					upgrade := uninteractive
 					if !uninteractive {
-						result, err := uiService.CreateSelect(fmt.Sprintf("Package %s has newer version %s available. Do you want to upgrade?", pkg.Name, pkg.Version), []string{"Yes", "No"})
+						result, err := uiService.CreateSelect(fmt.Sprintf("Bundle %s has newer version %s available. Do you want to upgrade?", bundle.Name, bundle.Version), []string{"Yes", "No"})
 						if err != nil {
 							return err
 						}
@@ -70,11 +70,11 @@ func upgradeCommand(helperService interfaces.HelperServiceInterface, uiService i
 						upgrade = result == "Yes"
 					}
 					if upgrade {
-						err := packageService.UpgradePackage(pkg, *bbeConfig, helmService)
+						err := packageService.UpgradeBundle(bundle, *bbeConfig, helmService)
 						if err != nil {
 							return err
 						}
-						installedPackages[i].Version = pkg.Version
+						installedBundles[i].Version = bundle.Version
 					}
 				}
 				break
@@ -82,7 +82,7 @@ func upgradeCommand(helperService interfaces.HelperServiceInterface, uiService i
 		}
 	}
 
-	logger.Info("All packages checked")
+	logger.Info("All bundle checked")
 
 	return nil
 }

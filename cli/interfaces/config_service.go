@@ -10,7 +10,7 @@ type ConfigServiceInterface interface {
 	UpdateBbeClusterName(helperService HelperServiceInterface, clusterName string) error
 	UpdateBbeStorageType(helperService HelperServiceInterface, storageType string) error
 	UpdateBbeAwsBucketName(helperService HelperServiceInterface, bucketName string) error
-	UpdateBbePackages(helperService HelperServiceInterface, packages []models.Package) error
+	UpdateBbeBundles(helperService HelperServiceInterface, bundles []models.BbeBundle) error
 	CheckForTalosConfigs(helperService HelperServiceInterface) bool
 	SyncConfigsWithAws(helperService HelperServiceInterface, bbeConfig *models.BbeConfig) error
 }

@@ -5,8 +5,8 @@ import (
 )
 
 type PackageServiceInterface interface {
-	GetAll() []models.Package
-	InstallPackage(pkg models.Package, bbeConfig models.BbeConfig, helmService HelmServiceInterface) error
-	UpgradePackage(pkg models.Package, bbeConfig models.BbeConfig, helmService HelmServiceInterface) error
-	UninstallPackage(pkg models.Package, bbeConfig models.BbeConfig, helmService HelmServiceInterface) error
+	GetAllBundles() []models.BbeBundle
+	InstallBundle(bundle models.BbeBundle, bbeConfig models.BbeConfig, helmService HelmServiceInterface) error
+	UninstallBundle(bundle models.BbeBundle, bbeConfig models.BbeConfig, helmService HelmServiceInterface) error
+	UpgradeBundle(bundle models.BbeBundle, bbeConfig models.BbeConfig, helmService HelmServiceInterface) error
 }
