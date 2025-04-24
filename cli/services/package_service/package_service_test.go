@@ -2,6 +2,7 @@ package package_service
 
 import (
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -14,9 +15,7 @@ import (
 )
 
 func Test_GetAll_Succeeds(t *testing.T) {
-	// Create a test server that returns our mock library.yaml
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Return our mock library.yaml content
 		w.Header().Set("Content-Type", "application/yaml")
 		w.Write([]byte(`library:
   - minBbeCli: "0.0.1"
@@ -51,6 +50,30 @@ func Test_GetAll_Succeeds(t *testing.T) {
 	assert.Equal(t, "0.1.3", result[0].Version)
 	assert.Equal(t, "ingress-nginx", result[1].Name)
 	assert.Equal(t, "4.12.0", result[1].Version)
+}
+
+func Test_GetAll_Fails(t *testing.T) {
+	// Create a test server that returns our mock library.yaml
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Return our mock library.yaml content
+		w.Header().Set("Content-Type", "application/yaml")
+		w.Write([]byte(`Not today, not today`))
+	}))
+	defer ts.Close()
+
+	// Override the BbeLibraryUrl constant to point to our test server
+	originalUrl := constants.BbeLibraryUrl
+	constants.BbeLibraryUrl = ts.URL
+	defer func() { constants.BbeLibraryUrl = originalUrl }()
+
+	packagesService := PackageService{}
+
+	// Get all packages directly from the service
+	result, err := packagesService.GetAll()
+
+	// Assert that the result contains the correct package data
+	assert.Empty(t, result)
+	assert.Error(t, err)
 }
 
 func Test_InstallPackage_Fails_WhenHelmRepositoryNotFound(t *testing.T) {
@@ -169,6 +192,20 @@ func Test_UpgradePackage_Succeeds(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+func Test_UpgradePackage_Fails_WhenPackageNotInstalled(t *testing.T) {
+	mockHelmService := &mocks.MockHelmService{}
+	mockHelmService.On("IsPackageInstalled", mock.Anything, mock.Anything, mock.Anything).Return(false)
+
+	packagesService := PackageService{}
+
+	bbeConfig := models.BbeConfig{}
+	bbeConfig.Bbe.Cluster.Context = "test-context"
+	err := packagesService.UpgradePackage(models.ChartEntry{Name: "ingress-nginx", Version: "4.12.0"}, bbeConfig, mockHelmService)
+
+	// Assert an error occurred
+	assert.Error(t, err)
+}
+
 func Test_UninstallPackage_Fails_WhenHelmFails(t *testing.T) {
 	mockErrorMessage := "Mockfailed uninstalling repo"
 	mockHelmService := &mocks.MockHelmService{}
@@ -199,4 +236,76 @@ func Test_UninstallPackage_Succeeds(t *testing.T) {
 
 	// Assert an error occurred
 	assert.NoError(t, err)
+}
+
+func Test_UninstallPackage_Fails_WhenPackageNotInstalled(t *testing.T) {
+	mockHelmService := &mocks.MockHelmService{}
+	mockHelmService.On("IsPackageInstalled", mock.Anything, mock.Anything, mock.Anything).Return(false)
+
+	packagesService := PackageService{}
+
+	bbeConfig := models.BbeConfig{}
+	bbeConfig.Bbe.Cluster.Context = "test-context"
+	err := packagesService.UninstallPackage(models.LocalPackage{Name: "ingress-nginx", Version: "4.12.0"}, bbeConfig, mockHelmService)
+
+	// Assert an error occurred
+	assert.Error(t, err)
+}
+
+func Test_getRemoteLibrary_Fails_WhenInvalidProtocol(t *testing.T) {
+
+	// Override the BbeLibraryUrl constant to point to our test server
+	originalUrl := constants.BbeLibraryUrl
+	constants.BbeLibraryUrl = "thisIsNotReal"
+	defer func() { constants.BbeLibraryUrl = originalUrl }()
+
+	mockErrorMessage := "unsupported protocol scheme"
+
+	result, err := getRemoteLibrary()
+
+	assert.Error(t, err)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), mockErrorMessage)
+}
+
+func Test_getRemoteLibrary_Fails_WhenIOReadFails(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/yaml")
+		w.Write([]byte(`test`))
+	}))
+	defer ts.Close()
+
+	// Override the BbeLibraryUrl constant to point to our test server
+	originalUrl := constants.BbeLibraryUrl
+	constants.BbeLibraryUrl = ts.URL
+	defer func() { constants.BbeLibraryUrl = originalUrl }()
+
+	ioReadAll = func(r io.Reader) ([]byte, error) {
+		return nil, errors.New("Mock failed to read")
+	}
+
+	defer func() { ioReadAll = io.ReadAll }()
+
+	result, err := getRemoteLibrary()
+
+	assert.Error(t, err)
+	assert.Nil(t, result)
+}
+
+func Test_getRemoteLibrary_Fails_WhenNoFileContent(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/yaml")
+		w.Write([]byte(``))
+	}))
+	defer ts.Close()
+
+	// Override the BbeLibraryUrl constant to point to our test server
+	originalUrl := constants.BbeLibraryUrl
+	constants.BbeLibraryUrl = ts.URL
+	defer func() { constants.BbeLibraryUrl = originalUrl }()
+
+	result, err := getRemoteLibrary()
+
+	assert.Error(t, err)
+	assert.Nil(t, result)
 }

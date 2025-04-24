@@ -15,6 +15,8 @@ import (
 
 type PackageService struct{}
 
+var ioReadAll = io.ReadAll
+
 func getRemoteLibrary() (*models.LibraryEntry, error) {
 	client := &http.Client{
 		Timeout: 10 * time.Second,
@@ -28,7 +30,7 @@ func getRemoteLibrary() (*models.LibraryEntry, error) {
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := ioReadAll(resp.Body)
 	if err != nil {
 		log.Printf("Error reading response body: %v", err)
 		return nil, err
