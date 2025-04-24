@@ -45,7 +45,10 @@ func upgradeCommand(helperService interfaces.HelperServiceInterface, uiService i
 	}
 
 	installedPackages := bbeConfig.Bbe.Packages
-	allPackages := packageService.GetAll()
+	allPackages, err := packageService.GetAll()
+	if err != nil {
+		return err
+	}
 
 	defer func() {
 		err := configService.UpdateBbePackages(helperService, installedPackages)

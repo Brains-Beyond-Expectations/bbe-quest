@@ -103,7 +103,7 @@ func (config ConfigService) UpdateBbeAwsBucketName(helperService interfaces.Help
 	return config.writeBbeConfig(helperService, bbeConfig)
 }
 
-func (config ConfigService) UpdateBbePackages(helperService interfaces.HelperServiceInterface, packages []models.Package) error {
+func (config ConfigService) UpdateBbePackages(helperService interfaces.HelperServiceInterface, packages []models.LocalPackage) error {
 	bbeConfig, err := config.GetBbeConfig(helperService)
 	if err != nil {
 		return err
@@ -118,7 +118,7 @@ func (config ConfigService) writeBbeConfig(helperService interfaces.HelperServic
 	fileLocation := fmt.Sprintf("%s/%s", helperService.GetConfigDir(), constants.BbeConfigFile)
 
 	// Filter out any empty packages to avoid writing them to the config file
-	var filteredPackages []models.Package
+	var filteredPackages []models.LocalPackage
 	for _, pkg := range bbeConfig.Bbe.Packages {
 		if pkg.Name != "" || pkg.Version != "" {
 			filteredPackages = append(filteredPackages, pkg)

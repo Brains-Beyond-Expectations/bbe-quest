@@ -2,92 +2,95 @@ package package_service
 
 import (
 	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"time"
 
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/constants"
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/interfaces"
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/models"
+	"gopkg.in/yaml.v3"
 )
 
 type PackageService struct{}
 
-var bbeRepository = models.BbePackageRepository{
-	Name:          "bbe",
-	RepositoryUrl: "https://brains-beyond-expectations.github.io/bbe-charts",
-}
-
-var packages = []models.BbePackage{
-	{
-		Package: models.Package{
-			Name:    "blocky",
-			Version: "0.1.3",
-		},
-		HelmChart:         "blocky",
-		HelmChartVersion:  "0.1.3",
-		PackageRepository: bbeRepository,
-	},
-	{
-		Package: models.Package{
-			Name:    "ingress-nginx",
-			Version: "4.12.0",
-		},
-		HelmChart:        "ingress-nginx",
-		HelmChartVersion: "4.12.0",
-		PackageRepository: models.BbePackageRepository{
-			Name:          "ingress-nginx",
-			RepositoryUrl: "https://kubernetes.github.io/ingress-nginx",
-		},
-	},
-}
-
-func (packageService PackageService) GetAll() []models.Package {
-	var packageList []models.Package
-	for _, pkg := range packages {
-		packageList = append(packageList, pkg.Package)
+func getRemoteLibrary() (*models.LibraryEntry, error) {
+	client := &http.Client{
+		Timeout: 10 * time.Second,
 	}
-	return packageList
-}
 
-func (packageService PackageService) InstallPackage(pkg models.Package, bbeConfig models.BbeConfig, helmService interfaces.HelmServiceInterface) error {
-	for _, p := range packages {
-		if p.Package.Name == pkg.Name {
-			if !helmService.IsPackageInstalled(pkg.Name, pkg.Name, bbeConfig.Bbe.Cluster.Context) {
-				response := helmService.AddRepo(p.PackageRepository.Name, p.PackageRepository.RepositoryUrl)
+	// Fetch the library.yaml file from remote
+	resp, err := client.Get(constants.BbeLibraryUrl)
+	if err != nil {
+		log.Printf("Error fetching library.yaml: %v", err)
+		return nil, err
+	}
+	defer resp.Body.Close()
 
-				if response != nil {
-					return response
-				}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("Error reading response body: %v", err)
+		return nil, err
+	}
 
-				return helmService.InstallChart(pkg.Name, p.HelmChart, p.PackageRepository.Name, pkg.Version, pkg.Name, bbeConfig.Bbe.Cluster.Context)
-			}
+	var library models.Library
+	if err := yaml.Unmarshal(body, &library); err != nil {
+		log.Printf("Error parsing YAML: %v", err)
+		return nil, err
+	}
 
-			return nil
+	for _, revision := range library.Library {
+		if revision.MinBbeCli <= constants.Version {
+			return &revision, nil
 		}
 	}
 
-	return fmt.Errorf("Package `%s` not found", pkg.Name)
+	return nil, fmt.Errorf("No revision found for current bbe-cli version")
 }
 
-func (packageService PackageService) UpgradePackage(pkg models.Package, bbeConfig models.BbeConfig, helmService interfaces.HelmServiceInterface) error {
-	for _, p := range packages {
-		if p.Package.Name == pkg.Name {
-			response := helmService.AddRepo(p.PackageRepository.Name, p.PackageRepository.RepositoryUrl)
-
-			if response != nil {
-				return response
-			}
-
-			return helmService.UpgradeChart(pkg.Name, p.HelmChart, p.PackageRepository.Name, p.HelmChartVersion, pkg.Name, bbeConfig.Bbe.Cluster.Context)
-		}
+func (packageService PackageService) GetAll() ([]models.ChartEntry, error) {
+	library, err := getRemoteLibrary()
+	if err != nil {
+		log.Printf("Error fetching library: %v", err)
+		return nil, err
 	}
 
-	return fmt.Errorf("Package `%s` not found", pkg.Name)
+	return library.Charts, nil
 }
 
-func (packageService PackageService) UninstallPackage(pkg models.Package, bbeConfig models.BbeConfig, helmService interfaces.HelmServiceInterface) error {
-	for _, p := range packages {
-		if p.Package.Name == pkg.Name {
-			return helmService.UninstallChart(pkg.Name, pkg.Name, bbeConfig.Bbe.Cluster.Context)
+func (packageService PackageService) InstallPackage(chart models.ChartEntry, bbeConfig models.BbeConfig, helmService interfaces.HelmServiceInterface) error {
+	if !helmService.IsPackageInstalled(chart.Name, chart.Name, bbeConfig.Bbe.Cluster.Context) {
+		response := helmService.AddRepo(chart.RepositoryName, chart.RepositoryUrl)
+
+		if response != nil {
+			return response
 		}
+
+		return helmService.InstallChart(chart.Name, chart.Name, chart.RepositoryName, chart.Version, chart.Name, bbeConfig.Bbe.Cluster.Context)
 	}
 
-	return fmt.Errorf("Package `%s` not found", pkg.Name)
+	return nil
+}
+
+func (packageService PackageService) UpgradePackage(chart models.ChartEntry, bbeConfig models.BbeConfig, helmService interfaces.HelmServiceInterface) error {
+	if !helmService.IsPackageInstalled(chart.Name, chart.Name, bbeConfig.Bbe.Cluster.Context) {
+		return fmt.Errorf("Package `%s` not installed", chart.Name)
+	}
+
+	response := helmService.AddRepo(chart.RepositoryName, chart.RepositoryUrl)
+
+	if response != nil {
+		return response
+	}
+
+	return helmService.UpgradeChart(chart.Name, chart.Name, chart.RepositoryName, chart.Version, chart.Name, bbeConfig.Bbe.Cluster.Context)
+}
+
+func (packageService PackageService) UninstallPackage(chart models.LocalPackage, bbeConfig models.BbeConfig, helmService interfaces.HelmServiceInterface) error {
+	if !helmService.IsPackageInstalled(chart.Name, chart.Name, bbeConfig.Bbe.Cluster.Context) {
+		return fmt.Errorf("Package `%s` not installed", chart.Name)
+	}
+
+	return helmService.UninstallChart(chart.Name, chart.Name, bbeConfig.Bbe.Cluster.Context)
 }

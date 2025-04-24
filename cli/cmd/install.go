@@ -47,7 +47,10 @@ func installCommand(helperService interfaces.HelperServiceInterface, uiService i
 		return nil
 	}
 
-	allPackages := packageService.GetAll()
+	allPackages, err := packageService.GetAll()
+	if err != nil {
+		return err
+	}
 
 	selectedIndexes, packageList := buildPackageIndex(allPackages, *bbeConfig)
 
@@ -74,7 +77,7 @@ func installCommand(helperService interfaces.HelperServiceInterface, uiService i
 	return nil
 }
 
-func buildPackageIndex(allPackages []models.Package, bbeConfig models.BbeConfig) (selectedIndexes []int, packageList []string) {
+func buildPackageIndex(allPackages []models.ChartEntry, bbeConfig models.BbeConfig) (selectedIndexes []int, packageList []string) {
 	for packageIndex, pkg := range allPackages {
 		packageList = append(packageList, pkg.Name)
 		for _, installedPkg := range bbeConfig.Bbe.Packages {
@@ -87,7 +90,7 @@ func buildPackageIndex(allPackages []models.Package, bbeConfig models.BbeConfig)
 	return selectedIndexes, packageList
 }
 
-func diffPackages(allPackages []models.Package, chosenPackages []string) (packagesToInstall []models.Package, packagesToUninstall []models.Package) {
+func diffPackages(allPackages []models.ChartEntry, chosenPackages []string) (packagesToInstall []models.ChartEntry, packagesToUninstall []models.ChartEntry) {
 	for _, pkg := range allPackages {
 		found := false
 		for _, chosenPackage := range chosenPackages {
@@ -105,11 +108,16 @@ func diffPackages(allPackages []models.Package, chosenPackages []string) (packag
 	return packagesToInstall, packagesToUninstall
 }
 
-func uninstallPackages(helperService interfaces.HelperServiceInterface, configService interfaces.ConfigServiceInterface, packageService interfaces.PackageServiceInterface, helmService interfaces.HelmServiceInterface, updatedBbeConfig models.BbeConfig, uninstalledPackages []models.Package) error {
+func uninstallPackages(helperService interfaces.HelperServiceInterface, configService interfaces.ConfigServiceInterface, packageService interfaces.PackageServiceInterface, helmService interfaces.HelmServiceInterface, updatedBbeConfig models.BbeConfig, uninstalledPackages []models.ChartEntry) error {
 	for _, pkg := range uninstalledPackages {
+		convertToPkg := &models.LocalPackage{
+			Name:    pkg.Name,
+			Version: pkg.Version,
+		}
+
 		for i, existingPkg := range updatedBbeConfig.Bbe.Packages {
 			if existingPkg.Name == pkg.Name {
-				err := packageService.UninstallPackage(pkg, updatedBbeConfig, helmService)
+				err := packageService.UninstallPackage(*convertToPkg, updatedBbeConfig, helmService)
 				if err != nil {
 					logger.Error("Failed to uninstall package", err)
 					continue
@@ -127,7 +135,7 @@ func uninstallPackages(helperService interfaces.HelperServiceInterface, configSe
 	return nil
 }
 
-func installPackages(helperService interfaces.HelperServiceInterface, configService interfaces.ConfigServiceInterface, packageService interfaces.PackageServiceInterface, helmService interfaces.HelmServiceInterface, updatedBbeConfig models.BbeConfig, installedPackages []models.Package) error {
+func installPackages(helperService interfaces.HelperServiceInterface, configService interfaces.ConfigServiceInterface, packageService interfaces.PackageServiceInterface, helmService interfaces.HelmServiceInterface, updatedBbeConfig models.BbeConfig, installedPackages []models.ChartEntry) error {
 	for _, pkg := range installedPackages {
 		err := packageService.InstallPackage(pkg, updatedBbeConfig, helmService)
 		if err != nil {
@@ -135,15 +143,21 @@ func installPackages(helperService interfaces.HelperServiceInterface, configServ
 		}
 
 		found := false
+		convertToPkg := &models.LocalPackage{
+			Name:    pkg.Name,
+			Version: pkg.Version,
+		}
+
 		for i, existingPkg := range updatedBbeConfig.Bbe.Packages {
 			if existingPkg.Name == pkg.Name {
-				updatedBbeConfig.Bbe.Packages[i] = pkg
+				updatedBbeConfig.Bbe.Packages[i] = *convertToPkg
 				found = true
 				break
 			}
 		}
+
 		if !found {
-			updatedBbeConfig.Bbe.Packages = append(updatedBbeConfig.Bbe.Packages, pkg)
+			updatedBbeConfig.Bbe.Packages = append(updatedBbeConfig.Bbe.Packages, *convertToPkg)
 		}
 	}
 	err := configService.UpdateBbePackages(helperService, updatedBbeConfig.Bbe.Packages)
