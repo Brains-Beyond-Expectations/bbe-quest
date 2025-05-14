@@ -269,7 +269,7 @@ func setupCommand(helperService interfaces.HelperServiceInterface, dependencySer
 
 	spinner.Start()
 	logger.Debug("Modifying talos config disk")
-	err = talosService.ModifyConfigDisk(helperService, nodeConfigFile, diskSelectionResult[0])
+	err = talosService.ModifyConfigDisk(helperService, nodeConfigFile, fmt.Sprintf("/dev/%s", diskSelectionResult[2]))
 	if err != nil {
 		return fmt.Errorf("Error while modifying config disk: %w", err)
 	}
