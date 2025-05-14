@@ -6,10 +6,10 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.36.2
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.77.1
 	github.com/briandowns/spinner v1.23.2
+	github.com/kaptinlin/jsonschema v0.2.3
 	github.com/lucasepe/codename v0.2.0
 	github.com/spf13/cobra v1.9.1
 	github.com/stretchr/testify v1.10.0
-	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -39,6 +39,11 @@ require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f // indirect
 	github.com/fatih/color v1.18.0 // indirect
+	github.com/goccy/go-json v0.10.5 // indirect
+	github.com/goccy/go-yaml v1.17.1 // indirect
+	github.com/gotnospirit/makeplural v0.0.0-20180622080156-a5f48d94d976 // indirect
+	github.com/gotnospirit/messageformat v0.0.0-20221001023931-dfe49f1eb092 // indirect
+	github.com/kaptinlin/go-i18n v0.1.3 // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
@@ -54,6 +59,7 @@ require (
 	golang.org/x/sys v0.30.0 // indirect
 	golang.org/x/term v0.29.0 // indirect
 	golang.org/x/text v0.22.0 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
 require (

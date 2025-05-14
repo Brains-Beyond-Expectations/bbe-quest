@@ -1,8 +1,10 @@
 package package_service
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"time"
 
@@ -10,7 +12,8 @@ import (
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/interfaces"
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/misc/logger"
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/models"
-	"gopkg.in/yaml.v3"
+	"github.com/kaptinlin/jsonschema"
+	"gopkg.in/yaml.v2"
 )
 
 type PackageService struct{}
@@ -70,7 +73,7 @@ func (packageService PackageService) InstallPackage(chart models.ChartEntry, bbe
 		if response != nil {
 			return response
 		}
-
+		packageService.checkHelmChartRequiredForPackage(chart.Name, bbeConfig, helmService)
 		return helmService.InstallChart(chart.Name, chart.Name, chart.RepositoryName, chart.Version, chart.Name, bbeConfig.Bbe.Cluster.Context)
 	}
 	logger.Debug(fmt.Sprintf("Package `%s` already installed", chart.Name))
@@ -100,4 +103,43 @@ func (packageService PackageService) UninstallPackage(chart models.LocalPackage,
 	}
 
 	return helmService.UninstallChart(chart.Name, chart.Name, bbeConfig.Bbe.Cluster.Context)
+}
+
+func (packageService PackageService) checkHelmChartRequiredForPackage(
+	packageName string,
+	bbeConfig models.BbeConfig,
+	helmService interfaces.HelmServiceInterface,
+) (bool, error) {
+
+	remoteSchemaUrl, err := packageService.getHelmChartJsonSchema(packageName, bbeConfig, helmService)
+	if err != nil {
+		log.Fatalf("Failed to get remote schema: %v", err)
+	}
+
+	compiler := jsonschema.NewCompiler()
+	schema, err := compiler.GetSchema(remoteSchemaUrl)
+	if err != nil {
+		log.Fatalf("Failed to load schema: %v", err)
+	}
+	invalidInstance := map[string]interface{}{
+		"name": "invalid",
+	}
+	result := schema.Validate(invalidInstance)
+
+	logger.Debug(fmt.Sprintf("Schema validation result: %v", result))
+
+	if !result.IsValid() {
+		details, _ := json.MarshalIndent(result.ToList(), "", "  ")
+		return false, fmt.Errorf("Schema validation failed: %v", details)
+	}
+
+	return true, nil
+}
+
+func (packageService PackageService) getHelmChartJsonSchema(
+	packageName string,
+	bbeConfig models.BbeConfig,
+	helmService interfaces.HelmServiceInterface,
+) (string, error) {
+	return fmt.Sprintf("https://raw.githubusercontent.com/Brains-Beyond-Expectations/bbe-charts/main/charts/%s/values.schema.json", packageName), nil
 }
