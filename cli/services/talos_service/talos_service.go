@@ -88,7 +88,7 @@ func (talosService TalosService) BootstrapCluster(helperService interfaces.Helpe
 		}
 
 		if time.Since(start) > timeout {
-			return fmt.Errorf("bootstrap failed after 5 minutes: %w", err)
+			return fmt.Errorf("Bootstrap failed after 5 minutes: %w", err)
 		}
 
 		time.Sleep(tenSeconds)
@@ -112,7 +112,7 @@ func (talosService TalosService) VerifyNodeHealth(helperService interfaces.Helpe
 		}
 
 		if time.Since(start) > timeout {
-			return fmt.Errorf("cluster health check failed after 5 minutes: %w", err)
+			return fmt.Errorf("Cluster health check failed after 5 minutes: %w", err)
 		}
 
 		time.Sleep(tenSeconds)
