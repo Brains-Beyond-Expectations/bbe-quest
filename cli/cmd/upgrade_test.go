@@ -22,7 +22,7 @@ func Test_upgradeCommand_Succeeds_WithNothingToDo(t *testing.T) {
 	packageService.AssertNumberOfCalls(t, "GetAll", 1)
 	uiService.AssertNumberOfCalls(t, "CreateSelect", 0)
 	packageService.AssertNumberOfCalls(t, "UpgradePackage", 0)
-	configService.AssertCalled(t, "UpdateBbePackages", mock.Anything, []models.Package{
+	configService.AssertCalled(t, "UpdateBbePackages", mock.Anything, []models.LocalPackage{
 		{
 			Name:    "package_one",
 			Version: "2.0.0",
@@ -35,7 +35,7 @@ func Test_upgradeCommand_Fails_With_No_Cluster_name(t *testing.T) {
 
 	bbeConfig := &models.BbeConfig{}
 	bbeConfig.Bbe.Cluster.Name = ""
-	bbeConfig.Bbe.Packages = []models.Package{
+	bbeConfig.Bbe.Packages = []models.LocalPackage{
 		{
 			Name:    "package_one",
 			Version: "1.0.0",
@@ -58,7 +58,7 @@ func Test_upgradeCommand_Fails_With_Error_Getting_BBE_Config(t *testing.T) {
 
 	bbeConfig := &models.BbeConfig{}
 	bbeConfig.Bbe.Cluster.Name = ""
-	bbeConfig.Bbe.Packages = []models.Package{
+	bbeConfig.Bbe.Packages = []models.LocalPackage{
 		{
 			Name:    "package_one",
 			Version: "1.0.0",
@@ -86,7 +86,7 @@ func Test_upgradeCommand_Fails_WhenCreateSelect(t *testing.T) {
 
 	bbeConfig := &models.BbeConfig{}
 	bbeConfig.Bbe.Cluster.Name = "test"
-	bbeConfig.Bbe.Packages = []models.Package{
+	bbeConfig.Bbe.Packages = []models.LocalPackage{
 		{
 			Name:    "package_one",
 			Version: "1.0.0",
@@ -117,7 +117,7 @@ func Test_upgradeCommand_Succeeds_WithInteractiveUpgrade(t *testing.T) {
 	uiService.On("CreateSelect", mock.Anything, mock.Anything).Return("No", nil).Once()
 	bbeConfig := &models.BbeConfig{}
 	bbeConfig.Bbe.Cluster.Name = "test"
-	bbeConfig.Bbe.Packages = []models.Package{
+	bbeConfig.Bbe.Packages = []models.LocalPackage{
 		{
 			Name:    "package_one",
 			Version: "1.0.0",
@@ -138,7 +138,7 @@ func Test_upgradeCommand_Succeeds_WithInteractiveUpgrade(t *testing.T) {
 	packageService.AssertNumberOfCalls(t, "GetAll", 1)
 	uiService.AssertNumberOfCalls(t, "CreateSelect", 2)
 	packageService.AssertNumberOfCalls(t, "UpgradePackage", 1)
-	configService.AssertCalled(t, "UpdateBbePackages", mock.Anything, []models.Package{
+	configService.AssertCalled(t, "UpdateBbePackages", mock.Anything, []models.LocalPackage{
 		{
 			Name:    "package_one",
 			Version: "2.0.0",
@@ -155,7 +155,7 @@ func Test_upgradeCommand_Succeeds_WithNonInteractiveUpgrade(t *testing.T) {
 
 	bbeConfig := &models.BbeConfig{}
 	bbeConfig.Bbe.Cluster.Name = "test"
-	bbeConfig.Bbe.Packages = []models.Package{
+	bbeConfig.Bbe.Packages = []models.LocalPackage{
 		{
 			Name:    "package_one",
 			Version: "1.0.0",
@@ -176,7 +176,7 @@ func Test_upgradeCommand_Succeeds_WithNonInteractiveUpgrade(t *testing.T) {
 	packageService.AssertNumberOfCalls(t, "GetAll", 1)
 	uiService.AssertNumberOfCalls(t, "CreateSelect", 0)
 	packageService.AssertNumberOfCalls(t, "UpgradePackage", 2)
-	configService.AssertCalled(t, "UpdateBbePackages", mock.Anything, []models.Package{
+	configService.AssertCalled(t, "UpdateBbePackages", mock.Anything, []models.LocalPackage{
 		{
 			Name:    "package_one",
 			Version: "2.0.0",
@@ -193,7 +193,7 @@ func Test_upgradeCommand_Fails_Prtial_UpdatesBbeConfig(t *testing.T) {
 
 	bbeConfig := &models.BbeConfig{}
 	bbeConfig.Bbe.Cluster.Name = "test"
-	bbeConfig.Bbe.Packages = []models.Package{
+	bbeConfig.Bbe.Packages = []models.LocalPackage{
 		{
 			Name:    "package_one",
 			Version: "1.0.0",
@@ -217,7 +217,7 @@ func Test_upgradeCommand_Fails_Prtial_UpdatesBbeConfig(t *testing.T) {
 	packageService.AssertNumberOfCalls(t, "GetAll", 1)
 	uiService.AssertNumberOfCalls(t, "CreateSelect", 0)
 	packageService.AssertNumberOfCalls(t, "UpgradePackage", 2)
-	configService.AssertCalled(t, "UpdateBbePackages", mock.Anything, []models.Package{
+	configService.AssertCalled(t, "UpdateBbePackages", mock.Anything, []models.LocalPackage{
 		{
 			Name:    "package_one",
 			Version: "2.0.0",
@@ -242,7 +242,7 @@ func initUpgradeCommand() (*mocks.MockHelperService, *mocks.MockUiService, *mock
 func mockSuccessfulUpgradeFlow(_ *mocks.MockHelperService, uiService *mocks.MockUiService, configService *mocks.MockConfigService, packageService *mocks.MockPackageService) {
 	bbeConfig := &models.BbeConfig{}
 	bbeConfig.Bbe.Cluster.Name = "test"
-	bbeConfig.Bbe.Packages = []models.Package{
+	bbeConfig.Bbe.Packages = []models.LocalPackage{
 		{
 			Name:    "package_one",
 			Version: "2.0.0",
@@ -251,7 +251,7 @@ func mockSuccessfulUpgradeFlow(_ *mocks.MockHelperService, uiService *mocks.Mock
 	configService.On("GetBbeConfig", mock.Anything).Return(bbeConfig, nil)
 	configService.On("UpdateBbePackages", mock.Anything, mock.Anything).Return(nil)
 
-	packageService.On("GetAll").Return([]models.Package{
+	packageService.On("GetAll").Return([]models.ChartEntry{
 		{
 			Name:    "package_one",
 			Version: "2.0.0",
@@ -260,6 +260,6 @@ func mockSuccessfulUpgradeFlow(_ *mocks.MockHelperService, uiService *mocks.Mock
 			Name:    "package_two",
 			Version: "3.0.0",
 		},
-	})
+	}, nil)
 	packageService.On("UpgradePackage", mock.Anything).Return(nil)
 }

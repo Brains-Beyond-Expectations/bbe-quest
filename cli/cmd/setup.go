@@ -81,6 +81,11 @@ func setupCommand(helperService interfaces.HelperServiceInterface, dependencySer
 	createControlPlane := answer == "Yes"
 
 	configExists := configService.CheckForTalosConfigs(helperService)
+
+	if createControlPlane && configExists {
+		return fmt.Errorf("You are trying to create a control plane node, but there are already config files present.")
+	}
+
 	if !configExists && !createControlPlane {
 		return fmt.Errorf("No config files found while trying to enroll new node in existing cluster, please create your first node first")
 	}
@@ -226,6 +231,7 @@ func setupCommand(helperService interfaces.HelperServiceInterface, dependencySer
 	if err != nil {
 		return fmt.Errorf("Error while getting control plane IP: %w", err)
 	}
+	logger.Debug(fmt.Sprintf("Control plane IP: %s", controlPlaneIp))
 
 	nodeConfigFile := constants.WorkerConfigFile
 	if createControlPlane {
@@ -269,7 +275,7 @@ func setupCommand(helperService interfaces.HelperServiceInterface, dependencySer
 
 	spinner.Start()
 	logger.Debug("Modifying talos config disk")
-	err = talosService.ModifyConfigDisk(helperService, nodeConfigFile, diskSelectionResult[0])
+	err = talosService.ModifyConfigDisk(helperService, nodeConfigFile, fmt.Sprintf("/dev/%s", diskSelectionResult[2]))
 	if err != nil {
 		return fmt.Errorf("Error while modifying config disk: %w", err)
 	}

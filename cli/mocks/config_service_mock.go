@@ -35,7 +35,7 @@ func (m *MockConfigService) UpdateBbeAwsBucketName(helperService interfaces.Help
 	return args.Error(0)
 }
 
-func (m *MockConfigService) UpdateBbePackages(helperService interfaces.HelperServiceInterface, packages []models.Package) error {
+func (m *MockConfigService) UpdateBbePackages(helperService interfaces.HelperServiceInterface, packages []models.LocalPackage) error {
 	args := m.Called(helperService, packages)
 	return args.Error(0)
 }

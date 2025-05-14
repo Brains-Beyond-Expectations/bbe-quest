@@ -2,9 +2,12 @@ package package_service
 
 import (
 	"errors"
-	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/constants"
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/mocks"
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/models"
 	"github.com/stretchr/testify/assert"
@@ -12,32 +15,65 @@ import (
 )
 
 func Test_GetAll_Succeeds(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/yaml")
+		w.Write([]byte(`library:
+  - minBbeCli: "0.0.1"
+    charts:
+      - name: "blocky"
+        version: "0.1.3"
+        repositoryName: "blocky"
+        repositoryUrl: "https://k8s-at-home.com/charts/"
+      - name: "ingress-nginx"
+        version: "4.12.0"
+        repositoryName: "ingress-nginx"
+        repositoryUrl: "https://kubernetes.github.io/ingress-nginx"`))
+	}))
+	defer ts.Close()
+
+	// Override the BbeLibraryUrl constant to point to our test server
+	originalUrl := constants.BbeLibraryUrl
+	constants.BbeLibraryUrl = ts.URL
+	defer func() { constants.BbeLibraryUrl = originalUrl }()
+
 	packagesService := PackageService{}
 
 	// Get all packages directly from the service
-	result := packagesService.GetAll()
+	result, err := packagesService.GetAll()
+	if err != nil {
+		t.Fatalf("Failed to get all packages: %v", err)
+	}
 
 	// Assert that the result contains the correct package data
-	assert.Len(t, result, 2) // We have one package in the predefined array
+	assert.Len(t, result, 2) // We have two packages in the mock library.yaml
 	assert.Equal(t, "blocky", result[0].Name)
 	assert.Equal(t, "0.1.3", result[0].Version)
 	assert.Equal(t, "ingress-nginx", result[1].Name)
 	assert.Equal(t, "4.12.0", result[1].Version)
 }
 
-func Test_InstallPackage_Fails_WhenPackageNotFound(t *testing.T) {
-	packageName := "not-a-real-package"
+func Test_GetAll_Fails(t *testing.T) {
+	// Create a test server that returns our mock library.yaml
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Return our mock library.yaml content
+		w.Header().Set("Content-Type", "application/yaml")
+		w.Write([]byte(`Not today, not today`))
+	}))
+	defer ts.Close()
 
-	mockHelmService := &mocks.MockHelmService{}
+	// Override the BbeLibraryUrl constant to point to our test server
+	originalUrl := constants.BbeLibraryUrl
+	constants.BbeLibraryUrl = ts.URL
+	defer func() { constants.BbeLibraryUrl = originalUrl }()
+
 	packagesService := PackageService{}
 
-	bbeConfig := models.BbeConfig{}
-	bbeConfig.Bbe.Cluster.Context = "test-context"
-	err := packagesService.InstallPackage(models.Package{Name: "not-a-real-package", Version: "4.12.0"}, bbeConfig, mockHelmService)
+	// Get all packages directly from the service
+	result, err := packagesService.GetAll()
 
-	// Assert an error occurred
+	// Assert that the result contains the correct package data
+	assert.Empty(t, result)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), fmt.Sprintf("Package `%s` not found", packageName))
 }
 
 func Test_InstallPackage_Fails_WhenHelmRepositoryNotFound(t *testing.T) {
@@ -50,7 +86,7 @@ func Test_InstallPackage_Fails_WhenHelmRepositoryNotFound(t *testing.T) {
 
 	bbeConfig := models.BbeConfig{}
 	bbeConfig.Bbe.Cluster.Context = "test-context"
-	err := packagesService.InstallPackage(models.Package{Name: "ingress-nginx", Version: "4.12.0"}, bbeConfig, mockHelmService)
+	err := packagesService.InstallPackage(models.ChartEntry{Name: "ingress-nginx", Version: "4.12.0"}, bbeConfig, mockHelmService)
 
 	// Assert an error occurred
 	assert.Error(t, err)
@@ -68,7 +104,7 @@ func Test_InstallPackage_Fails_WhenHelmInstallFails(t *testing.T) {
 
 	bbeConfig := models.BbeConfig{}
 	bbeConfig.Bbe.Cluster.Context = "test-context"
-	err := packagesService.InstallPackage(models.Package{Name: "ingress-nginx", Version: "4.12.0"}, bbeConfig, mockHelmService)
+	err := packagesService.InstallPackage(models.ChartEntry{Name: "ingress-nginx", Version: "4.12.0"}, bbeConfig, mockHelmService)
 
 	// Assert an error occurred
 	assert.Error(t, err)
@@ -85,7 +121,7 @@ func Test_InstallPackage_Succeeds(t *testing.T) {
 
 	bbeConfig := models.BbeConfig{}
 	bbeConfig.Bbe.Cluster.Context = "test-context"
-	err := packagesService.InstallPackage(models.Package{Name: "ingress-nginx", Version: "4.12.0"}, bbeConfig, mockHelmService)
+	err := packagesService.InstallPackage(models.ChartEntry{Name: "ingress-nginx", Version: "4.12.0"}, bbeConfig, mockHelmService)
 
 	// Assert an error occurred
 	assert.NoError(t, err)
@@ -99,37 +135,23 @@ func Test_InstallPackage_Skips_Already_Installed_And_Succeeds(t *testing.T) {
 	bbeConfig := models.BbeConfig{}
 	bbeConfig.Bbe.Cluster.Context = "test-context"
 
-	err := packagesService.InstallPackage(models.Package{Name: "ingress-nginx", Version: "4.12.0"}, bbeConfig, mockHelmService)
+	err := packagesService.InstallPackage(models.ChartEntry{Name: "ingress-nginx", Version: "4.12.0"}, bbeConfig, mockHelmService)
 
 	// Assert an error occurred
 	assert.NoError(t, err)
 }
 
-func Test_UpgradePackage_Fails_WhenPackageNotFound(t *testing.T) {
-	packageName := "not-a-real-package"
-
-	mockHelmService := &mocks.MockHelmService{}
-	packagesService := PackageService{}
-
-	bbeConfig := models.BbeConfig{}
-	bbeConfig.Bbe.Cluster.Context = "test-context"
-	err := packagesService.UpgradePackage(models.Package{Name: packageName, Version: "4.12.0"}, bbeConfig, mockHelmService)
-
-	// Assert an error occurred
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), fmt.Sprintf("Package `%s` not found", packageName))
-}
-
 func Test_UpgradePackage_Fails_WhenHelmRepositoryNotFound(t *testing.T) {
 	mockErrorMessage := "Mockfailed adding repo"
 	mockHelmService := &mocks.MockHelmService{}
+	mockHelmService.On("IsPackageInstalled", mock.Anything, mock.Anything, mock.Anything).Return(true)
 	mockHelmService.On("AddRepo", mock.Anything, mock.Anything).Return(errors.New(mockErrorMessage))
 
 	packagesService := PackageService{}
 
 	bbeConfig := models.BbeConfig{}
 	bbeConfig.Bbe.Cluster.Context = "test-context"
-	err := packagesService.UpgradePackage(models.Package{Name: "ingress-nginx", Version: "4.12.0"}, bbeConfig, mockHelmService)
+	err := packagesService.UpgradePackage(models.ChartEntry{Name: "ingress-nginx", Version: "4.12.0"}, bbeConfig, mockHelmService)
 
 	// Assert an error occurred
 	assert.Error(t, err)
@@ -139,6 +161,7 @@ func Test_UpgradePackage_Fails_WhenHelmRepositoryNotFound(t *testing.T) {
 func Test_UpgradePackage_Fails_WhenHelmUpgradeFails(t *testing.T) {
 	mockErrorMessage := "Mockfailed upgrading repo"
 	mockHelmService := &mocks.MockHelmService{}
+	mockHelmService.On("IsPackageInstalled", mock.Anything, mock.Anything, mock.Anything).Return(true)
 	mockHelmService.On("AddRepo", mock.Anything, mock.Anything).Return(nil)
 	mockHelmService.On("UpgradeChart", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New(mockErrorMessage))
 
@@ -146,7 +169,7 @@ func Test_UpgradePackage_Fails_WhenHelmUpgradeFails(t *testing.T) {
 
 	bbeConfig := models.BbeConfig{}
 	bbeConfig.Bbe.Cluster.Context = "test-context"
-	err := packagesService.UpgradePackage(models.Package{Name: "ingress-nginx", Version: "4.12.0"}, bbeConfig, mockHelmService)
+	err := packagesService.UpgradePackage(models.ChartEntry{Name: "ingress-nginx", Version: "4.12.0"}, bbeConfig, mockHelmService)
 
 	// Assert an error occurred
 	assert.Error(t, err)
@@ -155,6 +178,7 @@ func Test_UpgradePackage_Fails_WhenHelmUpgradeFails(t *testing.T) {
 
 func Test_UpgradePackage_Succeeds(t *testing.T) {
 	mockHelmService := &mocks.MockHelmService{}
+	mockHelmService.On("IsPackageInstalled", mock.Anything, mock.Anything, mock.Anything).Return(true)
 	mockHelmService.On("AddRepo", mock.Anything, mock.Anything).Return(nil)
 	mockHelmService.On("UpgradeChart", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
@@ -162,37 +186,37 @@ func Test_UpgradePackage_Succeeds(t *testing.T) {
 
 	bbeConfig := models.BbeConfig{}
 	bbeConfig.Bbe.Cluster.Context = "test-context"
-	err := packagesService.UpgradePackage(models.Package{Name: "ingress-nginx", Version: "4.12.0"}, bbeConfig, mockHelmService)
+	err := packagesService.UpgradePackage(models.ChartEntry{Name: "ingress-nginx", Version: "4.12.0"}, bbeConfig, mockHelmService)
 
 	// Assert an error occurred
 	assert.NoError(t, err)
 }
 
-func Test_UninstallPackage_Fails_WhenPackageNotFound(t *testing.T) {
-	packageName := "not-a-real-package"
-
+func Test_UpgradePackage_Fails_WhenPackageNotInstalled(t *testing.T) {
 	mockHelmService := &mocks.MockHelmService{}
+	mockHelmService.On("IsPackageInstalled", mock.Anything, mock.Anything, mock.Anything).Return(false)
+
 	packagesService := PackageService{}
 
 	bbeConfig := models.BbeConfig{}
 	bbeConfig.Bbe.Cluster.Context = "test-context"
-	err := packagesService.UninstallPackage(models.Package{Name: packageName, Version: "4.12.0"}, bbeConfig, mockHelmService)
+	err := packagesService.UpgradePackage(models.ChartEntry{Name: "ingress-nginx", Version: "4.12.0"}, bbeConfig, mockHelmService)
 
 	// Assert an error occurred
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), fmt.Sprintf("Package `%s` not found", packageName))
 }
 
 func Test_UninstallPackage_Fails_WhenHelmFails(t *testing.T) {
 	mockErrorMessage := "Mockfailed uninstalling repo"
 	mockHelmService := &mocks.MockHelmService{}
+	mockHelmService.On("IsPackageInstalled", mock.Anything, mock.Anything, mock.Anything).Return(true)
 	mockHelmService.On("UninstallChart", mock.Anything, mock.Anything, mock.Anything).Return(errors.New(mockErrorMessage))
 
 	packagesService := PackageService{}
 
 	bbeConfig := models.BbeConfig{}
 	bbeConfig.Bbe.Cluster.Context = "test-context"
-	err := packagesService.UninstallPackage(models.Package{Name: "ingress-nginx", Version: "4.12.0"}, bbeConfig, mockHelmService)
+	err := packagesService.UninstallPackage(models.LocalPackage{Name: "ingress-nginx", Version: "4.12.0"}, bbeConfig, mockHelmService)
 
 	// Assert an error occurred
 	assert.Error(t, err)
@@ -201,14 +225,87 @@ func Test_UninstallPackage_Fails_WhenHelmFails(t *testing.T) {
 
 func Test_UninstallPackage_Succeeds(t *testing.T) {
 	mockHelmService := &mocks.MockHelmService{}
+	mockHelmService.On("IsPackageInstalled", mock.Anything, mock.Anything, mock.Anything).Return(true)
 	mockHelmService.On("UninstallChart", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
 	packagesService := PackageService{}
 
 	bbeConfig := models.BbeConfig{}
 	bbeConfig.Bbe.Cluster.Context = "test-context"
-	err := packagesService.UninstallPackage(models.Package{Name: "ingress-nginx", Version: "4.12.0"}, bbeConfig, mockHelmService)
+	err := packagesService.UninstallPackage(models.LocalPackage{Name: "ingress-nginx", Version: "4.12.0"}, bbeConfig, mockHelmService)
 
 	// Assert an error occurred
 	assert.NoError(t, err)
+}
+
+func Test_UninstallPackage_Fails_WhenPackageNotInstalled(t *testing.T) {
+	mockHelmService := &mocks.MockHelmService{}
+	mockHelmService.On("IsPackageInstalled", mock.Anything, mock.Anything, mock.Anything).Return(false)
+
+	packagesService := PackageService{}
+
+	bbeConfig := models.BbeConfig{}
+	bbeConfig.Bbe.Cluster.Context = "test-context"
+	err := packagesService.UninstallPackage(models.LocalPackage{Name: "ingress-nginx", Version: "4.12.0"}, bbeConfig, mockHelmService)
+
+	// Assert an error occurred
+	assert.Error(t, err)
+}
+
+func Test_getRemoteLibrary_Fails_WhenInvalidProtocol(t *testing.T) {
+
+	// Override the BbeLibraryUrl constant to point to our test server
+	originalUrl := constants.BbeLibraryUrl
+	constants.BbeLibraryUrl = "thisIsNotReal"
+	defer func() { constants.BbeLibraryUrl = originalUrl }()
+
+	mockErrorMessage := "unsupported protocol scheme"
+
+	result, err := getRemoteLibrary()
+
+	assert.Error(t, err)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), mockErrorMessage)
+}
+
+func Test_getRemoteLibrary_Fails_WhenIOReadFails(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/yaml")
+		w.Write([]byte(`test`))
+	}))
+	defer ts.Close()
+
+	// Override the BbeLibraryUrl constant to point to our test server
+	originalUrl := constants.BbeLibraryUrl
+	constants.BbeLibraryUrl = ts.URL
+	defer func() { constants.BbeLibraryUrl = originalUrl }()
+
+	ioReadAll = func(r io.Reader) ([]byte, error) {
+		return nil, errors.New("Mock failed to read")
+	}
+
+	defer func() { ioReadAll = io.ReadAll }()
+
+	result, err := getRemoteLibrary()
+
+	assert.Error(t, err)
+	assert.Nil(t, result)
+}
+
+func Test_getRemoteLibrary_Fails_WhenNoFileContent(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/yaml")
+		w.Write([]byte(``))
+	}))
+	defer ts.Close()
+
+	// Override the BbeLibraryUrl constant to point to our test server
+	originalUrl := constants.BbeLibraryUrl
+	constants.BbeLibraryUrl = ts.URL
+	defer func() { constants.BbeLibraryUrl = originalUrl }()
+
+	result, err := getRemoteLibrary()
+
+	assert.Error(t, err)
+	assert.Nil(t, result)
 }

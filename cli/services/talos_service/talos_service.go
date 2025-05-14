@@ -26,8 +26,9 @@ type TalosService struct{}
 
 func (talosService TalosService) Ping(nodeIp string) bool {
 	// First check that this is a Talos device by querying for disks
-	cmd := execCommand("talosctl", "-n", nodeIp, "disks", "--insecure")
-	err := cmd.Run()
+	cmd := execCommand("talosctl", "-n", nodeIp, "get", "disks", "--insecure")
+	output, err := cmd.CombinedOutput()
+	logger.Debug(string(output))
 
 	if err != nil {
 		return false
@@ -35,7 +36,8 @@ func (talosService TalosService) Ping(nodeIp string) bool {
 
 	// If it is check if we get turned away by the machineconfig (if so it is likely to be in maintenance mode)
 	cmd = execCommand("talosctl", "-n", nodeIp, "get", "machineconfig", "--insecure")
-	err = cmd.Run()
+	output, err = cmd.CombinedOutput()
+	logger.Debug(string(output))
 
 	return err != nil
 }
@@ -43,6 +45,8 @@ func (talosService TalosService) Ping(nodeIp string) bool {
 func (talosService TalosService) GenerateConfig(helperService interfaces.HelperServiceInterface, controlPlaneIp string, clusterName string) error {
 	cmd := execCommand("talosctl", "gen", "config", clusterName, fmt.Sprintf("https://%s:6443", controlPlaneIp), "--output", helperService.GetConfigDir())
 	output, err := cmd.CombinedOutput()
+	logger.Debug(string(output))
+
 	if err != nil {
 		if strings.Contains(string(output), "already exists") {
 			return constants.ConfigExistsError
@@ -57,7 +61,9 @@ func (talosService TalosService) JoinCluster(helperService interfaces.HelperServ
 	logger.Infof("Instance %s is joining the cluster", nodeIp)
 
 	cmd := execCommand("talosctl", "apply-config", "--insecure", "-n", nodeIp, "--file", helperService.GetConfigFilePath(nodeConfigFile))
-	err := cmd.Run()
+	output, err := cmd.CombinedOutput()
+	logger.Debug(string(output))
+
 	if err != nil {
 		return err
 	}
@@ -74,13 +80,15 @@ func (talosService TalosService) BootstrapCluster(helperService interfaces.Helpe
 	timeout := fiveMinutes
 	for {
 		cmd := execCommand("talosctl", "bootstrap", "--nodes", nodeIp, "--endpoints", controlPlaneIp, fmt.Sprintf("--talosconfig=%s", configFilePath))
-		err := cmd.Run()
+		output, err := cmd.CombinedOutput()
+		logger.Debug(string(output))
+
 		if err == nil {
 			return nil
 		}
 
 		if time.Since(start) > timeout {
-			return fmt.Errorf("bootstrap failed after 5 minutes: %w", err)
+			return fmt.Errorf("Bootstrap failed after 5 minutes: %w", err)
 		}
 
 		time.Sleep(tenSeconds)
@@ -96,13 +104,15 @@ func (talosService TalosService) VerifyNodeHealth(helperService interfaces.Helpe
 	timeout := fiveMinutes
 	for {
 		cmd := execCommand("talosctl", "--nodes", nodeIp, "--endpoints", controlPlaneIp, "health", fmt.Sprintf("--talosconfig=%s", configFilePath))
-		err := cmd.Run()
+		output, err := cmd.CombinedOutput()
+		logger.Debug(string(output))
+
 		if err == nil {
 			return nil
 		}
 
 		if time.Since(start) > timeout {
-			return fmt.Errorf("cluster health check failed after 5 minutes: %w", err)
+			return fmt.Errorf("Cluster health check failed after 5 minutes: %w", err)
 		}
 
 		time.Sleep(tenSeconds)
@@ -110,8 +120,10 @@ func (talosService TalosService) VerifyNodeHealth(helperService interfaces.Helpe
 }
 
 func (talosService TalosService) GetDisks(helperService interfaces.HelperServiceInterface, nodeIp string) ([]string, error) {
-	cmd := execCommand("bash", "-c", fmt.Sprintf(`talosctl -n %s disks --insecure`, nodeIp))
+	cmd := execCommand("bash", "-c", fmt.Sprintf(`talosctl -n %s get disks --insecure`, nodeIp))
 	output, err := cmd.CombinedOutput()
+	logger.Debug(string(output))
+
 	if err != nil {
 		return nil, err
 	}
@@ -125,6 +137,8 @@ func (talosService TalosService) GetDisks(helperService interfaces.HelperService
 func (talosService TalosService) GetNetworkInterface(helperService interfaces.HelperServiceInterface, nodeIp string) (string, error) {
 	cmd := execCommand("bash", "-c", fmt.Sprintf(`talosctl -n %s get addresses --talosconfig %s  --insecure |  awk '$0 ~ /%s/ {print $0}' | awk '{$1=""; print $NF}' | awk '{print $NF}'`, nodeIp, helperService.GetConfigFilePath(constants.TalosConfigFile), nodeIp))
 	output, err := cmd.CombinedOutput()
+	logger.Debug(string(output))
+
 	if err != nil {
 		return "", err
 	}
@@ -250,7 +264,9 @@ func (talosService TalosService) GetControlPlaneIp(helperService interfaces.Help
 
 func (talosService TalosService) DownloadKubeConfig(helperService interfaces.HelperServiceInterface, nodeIp string, controlPlaneIp string) error {
 	cmd := execCommand("talosctl", "kubeconfig", "--nodes", nodeIp, "--endpoints", controlPlaneIp, fmt.Sprintf("--talosconfig=%s", helperService.GetConfigFilePath(constants.TalosConfigFile)))
-	err := cmd.Run()
+	output, err := cmd.CombinedOutput()
+	logger.Debug(string(output))
+
 	if err != nil {
 		return err
 	}

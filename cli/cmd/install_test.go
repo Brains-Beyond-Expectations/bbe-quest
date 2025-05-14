@@ -23,12 +23,14 @@ func Test_installCommand_Succeeds(t *testing.T) {
 	configService.AssertNumberOfCalls(t, "UpdateBbePackages", 2)
 	packageService.AssertNumberOfCalls(t, "GetAll", 1)
 	packageService.AssertNumberOfCalls(t, "UninstallPackage", 1)
-	packageService.AssertCalled(t, "UninstallPackage", models.Package{
-		Name: "package_to_be_removed",
+	packageService.AssertCalled(t, "UninstallPackage", models.LocalPackage{
+		Name:    "package_to_be_removed",
+		Version: "2.0.0",
 	})
 	packageService.AssertNumberOfCalls(t, "InstallPackage", 2)
-	packageService.AssertCalled(t, "InstallPackage", models.Package{
-		Name: "package_to_be_installed",
+	packageService.AssertCalled(t, "InstallPackage", models.ChartEntry{
+		Name:    "package_to_be_installed",
+		Version: "3.0.0",
 	})
 }
 
@@ -65,12 +67,14 @@ func Test_installCommand_Succeeds_ProceedsWhenFailingToUninstallPackages(t *test
 	configService.AssertNumberOfCalls(t, "UpdateBbePackages", 2)
 	packageService.AssertNumberOfCalls(t, "GetAll", 1)
 	packageService.AssertNumberOfCalls(t, "UninstallPackage", 1)
-	packageService.AssertCalled(t, "UninstallPackage", models.Package{
-		Name: "package_to_be_removed",
+	packageService.AssertCalled(t, "UninstallPackage", models.LocalPackage{
+		Name:    "package_to_be_removed",
+		Version: "2.0.0",
 	})
 	packageService.AssertNumberOfCalls(t, "InstallPackage", 2)
-	packageService.AssertCalled(t, "InstallPackage", models.Package{
-		Name: "package_to_be_installed",
+	packageService.AssertCalled(t, "InstallPackage", models.ChartEntry{
+		Name:    "package_always_installed",
+		Version: "1.0.0",
 	})
 }
 
@@ -89,8 +93,9 @@ func Test_installCommand_Fails_WhenFailingToUpdateBbeConfigurationOnUninstall(t 
 	configService.AssertNumberOfCalls(t, "UpdateBbePackages", 1)
 	packageService.AssertNumberOfCalls(t, "GetAll", 1)
 	packageService.AssertNumberOfCalls(t, "UninstallPackage", 1)
-	packageService.AssertCalled(t, "UninstallPackage", models.Package{
-		Name: "package_to_be_removed",
+	packageService.AssertCalled(t, "UninstallPackage", models.LocalPackage{
+		Name:    "package_to_be_removed",
+		Version: "2.0.0",
 	})
 	packageService.AssertNumberOfCalls(t, "InstallPackage", 0)
 }
@@ -110,8 +115,9 @@ func Test_installCommand_Fails_WhenFailingToInstallPackage(t *testing.T) {
 	configService.AssertNumberOfCalls(t, "UpdateBbePackages", 1)
 	packageService.AssertNumberOfCalls(t, "GetAll", 1)
 	packageService.AssertNumberOfCalls(t, "UninstallPackage", 1)
-	packageService.AssertCalled(t, "UninstallPackage", models.Package{
-		Name: "package_to_be_removed",
+	packageService.AssertCalled(t, "UninstallPackage", models.LocalPackage{
+		Name:    "package_to_be_removed",
+		Version: "2.0.0",
 	})
 	packageService.AssertNumberOfCalls(t, "InstallPackage", 1)
 }
@@ -132,8 +138,9 @@ func Test_installCommand_Fails_WhenFailingToUpdateBbeConfigurationOnInstall(t *t
 	configService.AssertNumberOfCalls(t, "UpdateBbePackages", 2)
 	packageService.AssertNumberOfCalls(t, "GetAll", 1)
 	packageService.AssertNumberOfCalls(t, "UninstallPackage", 1)
-	packageService.AssertCalled(t, "UninstallPackage", models.Package{
-		Name: "package_to_be_removed",
+	packageService.AssertCalled(t, "UninstallPackage", models.LocalPackage{
+		Name:    "package_to_be_removed",
+		Version: "2.0.0",
 	})
 	packageService.AssertNumberOfCalls(t, "InstallPackage", 2)
 }
@@ -156,31 +163,37 @@ func mockSuccessfulInstallFlow(_ *mocks.MockHelperService, uiService *mocks.Mock
 
 	bbeConfig := &models.BbeConfig{}
 	bbeConfig.Bbe.Cluster.Name = "test"
-	bbeConfig.Bbe.Packages = []models.Package{
+	bbeConfig.Bbe.Packages = []models.LocalPackage{
 		{
-			Name: "package_always_installed",
+			Name:    "package_always_installed",
+			Version: "1.0.0",
 		},
 		{
-			Name: "package_to_be_removed",
+			Name:    "package_to_be_removed",
+			Version: "2.0.0",
 		},
 	}
 	configService.On("GetBbeConfig", mock.Anything).Return(bbeConfig, nil)
 	configService.On("UpdateBbePackages", mock.Anything, mock.Anything).Return(nil)
 
-	packageService.On("GetAll").Return([]models.Package{
+	packageService.On("GetAll").Return([]models.ChartEntry{
 		{
-			Name: "package_always_installed",
+			Name:    "package_always_installed",
+			Version: "1.0.0",
 		},
 		{
-			Name: "package_to_be_removed",
+			Name:    "package_to_be_removed",
+			Version: "2.0.0",
 		},
 		{
-			Name: "package_to_be_installed",
+			Name:    "package_to_be_installed",
+			Version: "3.0.0",
 		},
 		{
-			Name: "package_to_be_ignored",
+			Name:    "package_to_be_ignored",
+			Version: "4.0.0",
 		},
-	})
+	}, nil)
 	packageService.On("UninstallPackage", mock.Anything).Return(nil)
 	packageService.On("InstallPackage", mock.Anything).Return(nil)
 }
