@@ -298,6 +298,25 @@ func Test_setupCommand_Fails_WhenEnrollingIntoExistingClusterWithMissingConfigs(
 	configService.AssertNumberOfCalls(t, "UpdateBbeClusterName", 0)
 }
 
+func Test_setupCommand_Fails_WhenEnrollingNewFirstNodeWithPreexistingConfigs(t *testing.T) {
+	helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp := initSetupTests()
+
+	uiService.On("CreateSelect", "Is this the first node in your cluster?", mock.Anything).Return("Yes", nil)
+	configService.On("CheckForTalosConfigs", helperService).Return(true)
+
+	mockSuccessfulSetupFlow(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp, true)
+
+	err := setupCommand(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService)
+
+	assert.NotNil(t, err)
+	helperService.AssertNumberOfCalls(t, "IsValidIp", 0)
+	imageService.AssertNumberOfCalls(t, "CreateImage", 0)
+	talosService.AssertNumberOfCalls(t, "GetDisks", 0)
+	configService.AssertNumberOfCalls(t, "GenerateBbeConfig", 0)
+	configService.AssertNumberOfCalls(t, "SyncConfigsWithAws", 0)
+	configService.AssertNumberOfCalls(t, "UpdateBbeClusterName", 0)
+}
+
 func Test_setupCommand_Fails__WhenFailingToDownloadImage(t *testing.T) {
 	helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp := initSetupTests()
 
