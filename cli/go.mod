@@ -59,7 +59,7 @@ require (
 require (
 	github.com/aws/aws-sdk-go-v2/config v1.29.7
 	github.com/cqroot/prompt v0.9.4
-	github.com/go-viper/mapstructure/v2 v2.2.1
+	github.com/go-viper/mapstructure/v2 v2.3.0
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/spf13/pflag v1.0.6 // indirect
 	gopkg.in/yaml.v2 v2.4.0
