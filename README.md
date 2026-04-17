@@ -4,51 +4,39 @@
 
 ![BBE-Quest Banner](./assets/banner.webp)
 
-BBE-Quest is a CLI tool that helps you easily set up a Kubernetes cluster using
-Talos. It is designed to be a simple and easy-to-use tool that automates the
-process of setting up a Kubernetes cluster on your hardware, including several
-useful tools.
+BBE-Quest is a CLI tool (`bbe`) that automates the end-to-end setup and ongoing management of a home-lab Kubernetes cluster running on [Talos Linux](https://www.talos.dev/). It handles everything from flashing node images to installing a full media and networking stack — the goal is a *set-and-forget* home lab cluster.
 
-The goal of BBE-Quest is to be a set and forget way to setup your home lab
-cluster.
+Supported hardware: **Intel NUC** (x86) and **Raspberry Pi 4** (ARM64). Mixed clusters are supported.
 
-## Getting Started
-
-> [!NOTE]  
-> Since Talos does not support secure boot on x86, you will need to disable
-> secure boot in the BIOS settings of x86 devices.
-
-### Requirements
-
-- [balenaEtcher](https://www.balena.io/etcher/)
-- [talosctl](https://www.talos.dev/v1.8/learn-more/talosctl/)
-- [nmap](https://nmap.org/)
-
-### Installing the BBE-Quest CLI
-
-To install the BBE-Quest CLI, run the following command:
+## Quick Start
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Brains-Beyond-Expectations/bbe-quest/main/install.sh | bash
+bbe config   # initialise configuration
+bbe setup    # provision your first node
+bbe install  # install media and networking packages
 ```
 
-## Local Development
+## Documentation
 
-Refer the requirements below and make sure you have Go version 1.23 or higher
-installed. Change directory to the cli folder:
+- [Getting Started](docs/getting-started.md) — prerequisites, installation, first-time setup walkthrough
+- [Architecture](docs/architecture.md) — how BBE-Quest works internally, service overview
+- [Configuration](docs/configuration.md) — `bbe.yaml` schema, local vs. AWS S3 storage
+- [Supported Hardware](docs/hardware.md) — Intel NUC and Raspberry Pi 4 details
+- [Troubleshooting](docs/troubleshooting.md) — common errors and how to fix them
 
-```bash
-cd cli
-```
+### Commands
 
-To call a CLI command, run:
+- [`bbe setup`](docs/commands/setup.md) — provision a new node and bootstrap or join a cluster
+- [`bbe install`](docs/commands/install.md) — install Helm package bundles on the cluster
+- [`bbe upgrade`](docs/commands/upgrade.md) — upgrade installed packages to latest versions
+- [`bbe config`](docs/commands/config.md) — initialise or sync the `bbe.yaml` configuration
+- [`bbe version`](docs/commands/version.md) — print the current CLI version
 
-```bash
-go run main.go <command>
-```
+### Contributing
 
-To run the tests, run:
+- [Local Development](docs/development.md) — build, test, and extend BBE-Quest
 
-```bash
-make test
-```
+## Related
+
+- [bbe-charts](https://github.com/Brains-Beyond-Expectations/bbe-charts) — the Helm chart repository powering `bbe install` and `bbe upgrade`
