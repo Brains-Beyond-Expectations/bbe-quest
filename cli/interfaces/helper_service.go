@@ -13,4 +13,6 @@ type HelperServiceInterface interface {
 	IsValidIp(ip string) bool
 	GetConfigDir() string
 	GetConfigFilePath(name string) string
+	GetChartValuesDir() string
+	GetChartValuesFilePath(chartName string) string
 }

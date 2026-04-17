@@ -29,12 +29,18 @@ func (HelmService HelmService) AddRepo(repoName string, repoUrl string) error {
 	return nil
 }
 
-func (HelmService HelmService) InstallChart(pkgName string, chartName string, repoName string, version string, namespace string, context string) error {
-	cmd := execCommand("helm", "install", pkgName, fmt.Sprintf("%s/%s", repoName, chartName),
+func (HelmService HelmService) InstallChart(pkgName string, chartName string, repoName string, version string, namespace string, context string, valuesFile string) error {
+	args := []string{
+		"install", pkgName, fmt.Sprintf("%s/%s", repoName, chartName),
 		"--version", version,
 		"--namespace", namespace,
 		"--create-namespace",
-		"--kube-context", context)
+		"--kube-context", context,
+	}
+	if valuesFile != "" {
+		args = append(args, "-f", valuesFile)
+	}
+	cmd := execCommand("helm", args...)
 	logger.Debug(fmt.Sprintf("Installing helm chart `%s` from repo `%s` with version `%s` in namespace `%s`", pkgName, repoName, version, namespace))
 	logger.Debug(fmt.Sprintf("Command: %s", cmd.String()))
 
@@ -47,14 +53,25 @@ func (HelmService HelmService) InstallChart(pkgName string, chartName string, re
 	return nil
 }
 
-func (HelmService HelmService) UpgradeChart(pkgName string, chartName string, repoName string, version string, namespace string, context string) error {
-	cmd := execCommand("helm", "upgrade", pkgName, fmt.Sprintf("%s/%s", repoName, chartName),
+func (HelmService HelmService) UpgradeChart(pkgName string, chartName string, repoName string, version string, namespace string, context string, valuesFile string) error {
+	args := []string{
+		"upgrade", pkgName, fmt.Sprintf("%s/%s", repoName, chartName),
 		"--version", version,
 		"--namespace", namespace,
 		"--create-namespace",
-		"--kube-context", context)
+		"--kube-context", context,
+	}
+	if valuesFile != "" {
+		args = append(args, "-f", valuesFile)
+	}
+	cmd := execCommand("helm", args...)
+	logger.Debug(fmt.Sprintf("Upgrading helm chart `%s` from repo `%s` with version `%s` in namespace `%s`", pkgName, repoName, version, namespace))
+	logger.Debug(fmt.Sprintf("Command: %s", cmd.String()))
 
-	if err := cmd.Run(); err != nil {
+	response, err := cmd.CombinedOutput()
+	logger.Debug(fmt.Sprintf("Response: %s", string(response)))
+
+	if err != nil {
 		return fmt.Errorf("Failed to upgrade helm package `%s`: %w", pkgName, err)
 	}
 	return nil

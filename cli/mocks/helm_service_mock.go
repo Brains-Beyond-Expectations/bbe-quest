@@ -13,13 +13,13 @@ func (m *MockHelmService) AddRepo(repoName string, repoUrl string) error {
 	return args.Error(0)
 }
 
-func (m *MockHelmService) InstallChart(pkgName string, chartName string, repoName string, version string, namespace string, context string) error {
-	args := m.Called(pkgName, chartName, repoName, version, namespace, context)
+func (m *MockHelmService) InstallChart(pkgName string, chartName string, repoName string, version string, namespace string, context string, valuesFile string) error {
+	args := m.Called(pkgName, chartName, repoName, version, namespace, context, valuesFile)
 	return args.Error(0)
 }
 
-func (m *MockHelmService) UpgradeChart(pkgName string, chartName string, repoName string, version string, namespace string, context string) error {
-	args := m.Called(pkgName, chartName, repoName, version, namespace, context)
+func (m *MockHelmService) UpgradeChart(pkgName string, chartName string, repoName string, version string, namespace string, context string, valuesFile string) error {
+	args := m.Called(pkgName, chartName, repoName, version, namespace, context, valuesFile)
 	return args.Error(0)
 }
 

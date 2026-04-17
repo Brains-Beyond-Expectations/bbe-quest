@@ -15,12 +15,12 @@ func (m *MockPackageService) GetAll() ([]models.ChartEntry, error) {
 	return args.Get(0).([]models.ChartEntry), args.Error(1)
 }
 
-func (m *MockPackageService) InstallPackage(pkg models.ChartEntry, bbeConfig models.BbeConfig, helmService interfaces.HelmServiceInterface) error {
+func (m *MockPackageService) InstallPackage(pkg models.ChartEntry, bbeConfig models.BbeConfig, helmService interfaces.HelmServiceInterface, uiService interfaces.UiServiceInterface, helperService interfaces.HelperServiceInterface) error {
 	args := m.Called(pkg)
 	return args.Error(0)
 }
 
-func (m *MockPackageService) UpgradePackage(pkg models.ChartEntry, bbeConfig models.BbeConfig, helmService interfaces.HelmServiceInterface) error {
+func (m *MockPackageService) UpgradePackage(pkg models.ChartEntry, bbeConfig models.BbeConfig, helmService interfaces.HelmServiceInterface, uiService interfaces.UiServiceInterface, helperService interfaces.HelperServiceInterface) error {
 	args := m.Called(pkg)
 	return args.Error(0)
 }

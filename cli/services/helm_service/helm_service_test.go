@@ -40,7 +40,7 @@ func Test_Helm_Service_Fails_Install_Repo(t *testing.T) {
 	}
 
 	helmService := HelmService{}
-	err := helmService.InstallChart("packageName", "chartName", "repoName", "version", "namespace", "context")
+	err := helmService.InstallChart("packageName", "chartName", "repoName", "version", "namespace", "context", "")
 
 	// Assert an error occurred
 	assert.Error(t, err)
@@ -54,7 +54,7 @@ func Test_Helm_Service_Succeeds_Install_Repo(t *testing.T) {
 	}
 
 	helmService := HelmService{}
-	err := helmService.InstallChart("packageName", "chartName", "repoName", "version", "namespace", "context")
+	err := helmService.InstallChart("packageName", "chartName", "repoName", "version", "namespace", "context", "")
 
 	// Assert an error occurred
 	assert.NoError(t, err)
@@ -67,7 +67,7 @@ func Test_Helm_Service_Fails_Upgrade_Chart(t *testing.T) {
 	}
 
 	helmService := HelmService{}
-	err := helmService.UpgradeChart("packageName", "chartName", "repoName", "version", "namespace", "context")
+	err := helmService.UpgradeChart("packageName", "chartName", "repoName", "version", "namespace", "context", "")
 
 	// Assert an error occurred
 	assert.Error(t, err)
@@ -81,7 +81,7 @@ func Test_Helm_Service_Succeeds_Upgrade_Chart(t *testing.T) {
 	}
 
 	helmService := HelmService{}
-	err := helmService.UpgradeChart("packageName", "chartName", "repoName", "version", "namespace", "context")
+	err := helmService.UpgradeChart("packageName", "chartName", "repoName", "version", "namespace", "context", "")
 
 	// Assert an error occurred
 	assert.NoError(t, err)
