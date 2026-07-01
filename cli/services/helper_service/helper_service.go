@@ -108,3 +108,11 @@ func (helperService HelperService) GetConfigFilePath(name string) string {
 	configDir := helperService.GetConfigDir()
 	return fmt.Sprintf("%s/%s", configDir, name)
 }
+
+func (helperService HelperService) GetChartValuesDir() string {
+	return filepath.Join(helperService.GetConfigDir(), "chart-values")
+}
+
+func (helperService HelperService) GetChartValuesFilePath(chartName string) string {
+	return filepath.Join(helperService.GetChartValuesDir(), chartName+"-values.yaml")
+}

@@ -10,6 +10,7 @@ talosconfig
 cover.out
 __debug_*
 coverage.out
+coverage.html
 *.code-workspace
 
 # Binary

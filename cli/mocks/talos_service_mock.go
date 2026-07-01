@@ -79,6 +79,11 @@ func (m *MockTalosService) ModifySchedulingOnControlPlane(helperService interfac
 	return args.Error(0)
 }
 
+func (m *MockTalosService) DisablePodSecurity(helperService interfaces.HelperServiceInterface) error {
+	args := m.Called(helperService)
+	return args.Error(0)
+}
+
 func (m *MockTalosService) GetControlPlaneIp(helperService interfaces.HelperServiceInterface, configFile string) (string, error) {
 	args := m.Called(helperService, configFile)
 	return args.Get(0).(string), args.Error(1)

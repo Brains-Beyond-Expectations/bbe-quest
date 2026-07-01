@@ -46,6 +46,16 @@ func (mock *MockHelperService) GetConfigFilePath(name string) string {
 	return args.String(0)
 }
 
+func (mock *MockHelperService) GetChartValuesDir() string {
+	args := mock.Mock.Called()
+	return args.String(0)
+}
+
+func (mock *MockHelperService) GetChartValuesFilePath(chartName string) string {
+	args := mock.Mock.Called(chartName)
+	return args.String(0)
+}
+
 func (mock *MockHelperService) IsValidIp(ip string) bool {
 	args := mock.Mock.Called(ip)
 

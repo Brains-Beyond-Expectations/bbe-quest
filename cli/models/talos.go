@@ -18,8 +18,12 @@ type TalosMachineConfig struct {
 			Endpoint string                 `mapstructure:"endpoint,omitempty"`
 			Unmapped map[string]interface{} `mapstructure:",remain"`
 		} `mapstructure:"controlPlane,omitempty"`
-		AllowSchedulingOnControlPlanes bool                   `mapstructure:"allowSchedulingOnControlPlanes"`
-		Unmapped                       map[string]interface{} `mapstructure:",remain"`
+		AllowSchedulingOnControlPlanes bool `mapstructure:"allowSchedulingOnControlPlanes"`
+		ApiServer                      struct {
+			AdmissionControl []TalosAdmissionControl `mapstructure:"admissionControl,omitempty"`
+			Unmapped         map[string]interface{}  `mapstructure:",remain"`
+		} `mapstructure:"apiServer,omitempty"`
+		Unmapped map[string]interface{} `mapstructure:",remain"`
 	} `mapstructure:"cluster,omitempty"`
 	Unmapped map[string]interface{} `mapstructure:",remain"`
 }
@@ -33,4 +37,9 @@ type TalosInterface struct {
 type TalosRoute struct {
 	Network string `mapstructure:"network,omitempty"`
 	Gateway string `mapstructure:"gateway,omitempty"`
+}
+
+type TalosAdmissionControl struct {
+	Name          string                 `mapstructure:"name,omitempty"`
+	Configuration map[string]interface{} `mapstructure:"configuration,omitempty"`
 }

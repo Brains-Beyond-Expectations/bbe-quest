@@ -517,6 +517,24 @@ func Test_setupCommand_Fails__WhenFailingToModifySchedulingOnControlPlane(t *tes
 	configService.AssertNumberOfCalls(t, "UpdateBbeClusterName", 0)
 }
 
+func Test_setupCommand_Fails__WhenFailingToDisablePodSecurity(t *testing.T) {
+	helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp := initSetupTests()
+
+	talosService.On("DisablePodSecurity", helperService).Return(errors.New("test error"))
+
+	mockSuccessfulSetupFlow(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp, true)
+
+	err := setupCommand(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService)
+
+	assert.NotNil(t, err)
+	helperService.AssertNumberOfCalls(t, "IsValidIp", 0)
+	imageService.AssertNumberOfCalls(t, "CreateImage", 1)
+	talosService.AssertNumberOfCalls(t, "GetDisks", 1)
+	configService.AssertNumberOfCalls(t, "GenerateBbeConfig", 0)
+	configService.AssertNumberOfCalls(t, "SyncConfigsWithAws", 0)
+	configService.AssertNumberOfCalls(t, "UpdateBbeClusterName", 0)
+}
+
 func Test_setupCommand_Fails__WhenFailingToModifyConfigDisk(t *testing.T) {
 	helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp := initSetupTests()
 
@@ -674,6 +692,7 @@ func mockSuccessfulSetupFlow(helperService *mocks.MockHelperService, dependencyS
 	talosService.On("ModifyNetworkGateway", helperService, nodeTypeConfigFile, gatewayIp).Return(nil)
 	talosService.On("ModifyNetworkHostname", helperService, nodeTypeConfigFile, "talos-node").Return(nil)
 	talosService.On("ModifySchedulingOnControlPlane", helperService, true).Return(nil)
+	talosService.On("DisablePodSecurity", helperService).Return(nil)
 	talosService.On("ModifyConfigDisk", helperService, nodeTypeConfigFile, "/dev/sda").Return(nil)
 	talosService.On("JoinCluster", helperService, nodeIp, nodeTypeConfigFile).Return(nil)
 	talosService.On("BootstrapCluster", helperService, chosenIp, chosenIp).Return(nil)

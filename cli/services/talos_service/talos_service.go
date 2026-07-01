@@ -247,6 +247,41 @@ func (talosService TalosService) ModifySchedulingOnControlPlane(helperService in
 	return writeConfig(configDir, configFile, *parsedConfig)
 }
 
+func (talosService TalosService) DisablePodSecurity(helperService interfaces.HelperServiceInterface) error {
+	configDir := helperService.GetConfigDir()
+	configFile := constants.ControlplaneConfigFile
+
+	parsedConfig, err := getParsedConfig(configDir, configFile)
+	if err != nil {
+		return err
+	}
+
+	parsedConfig.Cluster.ApiServer.AdmissionControl = []models.TalosAdmissionControl{
+		{
+			Name: "PodSecurity",
+			Configuration: map[string]interface{}{
+				"apiVersion": "pod-security.admission.config.k8s.io/v1alpha1",
+				"kind":       "PodSecurityConfiguration",
+				"defaults": map[string]interface{}{
+					"enforce":         "privileged",
+					"enforce-version": "latest",
+					"audit":           "privileged",
+					"audit-version":   "latest",
+					"warn":            "privileged",
+					"warn-version":    "latest",
+				},
+				"exemptions": map[string]interface{}{
+					"usernames":      []interface{}{},
+					"runtimeClasses": []interface{}{},
+					"namespaces":     []interface{}{},
+				},
+			},
+		},
+	}
+
+	return writeConfig(configDir, configFile, *parsedConfig)
+}
+
 func (talosService TalosService) GetControlPlaneIp(helperService interfaces.HelperServiceInterface, configFile string) (string, error) {
 	configDir := helperService.GetConfigDir()
 

@@ -69,7 +69,7 @@ func installCommand(helperService interfaces.HelperServiceInterface, uiService i
 		return fmt.Errorf("Failed to uninstall packages: %w", err)
 	}
 
-	err = installPackages(helperService, configService, packageService, helmService, updatedBbeConfig, packagesToInstall)
+	err = installPackages(helperService, uiService, configService, packageService, helmService, updatedBbeConfig, packagesToInstall)
 	if err != nil {
 		return fmt.Errorf("Failed to install packages: %w", err)
 	}
@@ -135,9 +135,9 @@ func uninstallPackages(helperService interfaces.HelperServiceInterface, configSe
 	return nil
 }
 
-func installPackages(helperService interfaces.HelperServiceInterface, configService interfaces.ConfigServiceInterface, packageService interfaces.PackageServiceInterface, helmService interfaces.HelmServiceInterface, updatedBbeConfig models.BbeConfig, installedPackages []models.ChartEntry) error {
+func installPackages(helperService interfaces.HelperServiceInterface, uiService interfaces.UiServiceInterface, configService interfaces.ConfigServiceInterface, packageService interfaces.PackageServiceInterface, helmService interfaces.HelmServiceInterface, updatedBbeConfig models.BbeConfig, installedPackages []models.ChartEntry) error {
 	for _, pkg := range installedPackages {
-		err := packageService.InstallPackage(pkg, updatedBbeConfig, helmService)
+		err := packageService.InstallPackage(pkg, updatedBbeConfig, helmService, uiService, helperService)
 		if err != nil {
 			return fmt.Errorf("Failed to install package: %w", err)
 		}

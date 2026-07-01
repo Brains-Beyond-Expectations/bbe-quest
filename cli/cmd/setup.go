@@ -271,6 +271,11 @@ func setupCommand(helperService interfaces.HelperServiceInterface, dependencySer
 		if err != nil {
 			return fmt.Errorf("Error while storing controlplane scheduling in file: %w", err)
 		}
+
+		err = talosService.DisablePodSecurity(helperService)
+		if err != nil {
+			return fmt.Errorf("Error while disabling pod security: %w", err)
+		}
 	}
 
 	spinner.Start()
