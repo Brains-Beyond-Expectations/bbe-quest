@@ -776,3 +776,76 @@ func Test_DownloadKubeConfig_Fails_IfTalosCtlFails(t *testing.T) {
 	assert.NotNil(t, err)
 	helperService.AssertNumberOfCalls(t, "GetConfigFilePath", 1)
 }
+
+func Test_DisablePodSecurity_Succeeds_PreservesUnknownKeys(t *testing.T) {
+	config := &map[interface{}]interface{}{
+		"foo": "bar",
+		"cluster": map[interface{}]interface{}{
+			"foo": "bar",
+		},
+	}
+
+	configYaml, err := yaml.Marshal(config)
+	if err != nil {
+		panic(err)
+	}
+
+	mockOs := mocks.MockOs{}
+	mockOs.On("ReadFile", mock.Anything).Return(configYaml, nil)
+	mockOs.On("WriteFile", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	osReadFile = mockOs.ReadFile
+	osWriteFile = mockOs.WriteFile
+
+	helperService := mocks.MockHelperService{}
+	helperService.On("GetConfigDir").Return("test")
+
+	talosService := TalosService{}
+	err = talosService.DisablePodSecurity(&helperService)
+
+	mapResult := make(map[interface{}]interface{})
+	unmarshallErr := yaml.Unmarshal(mockOs.Calls[1].Arguments[1].([]byte), &mapResult)
+	if unmarshallErr != nil {
+		panic(unmarshallErr)
+	}
+
+	clusterMap := mapResult["cluster"].(map[interface{}]interface{})
+	apiServerMap := clusterMap["apiServer"].(map[interface{}]interface{})
+	admissionControl := apiServerMap["admissionControl"].([]interface{})
+	firstEntry := admissionControl[0].(map[interface{}]interface{})
+	configuration := firstEntry["configuration"].(map[interface{}]interface{})
+	defaults := configuration["defaults"].(map[interface{}]interface{})
+
+	assert.Nil(t, err)
+	assert.Equal(t, "PodSecurity", firstEntry["name"])
+	assert.Equal(t, "pod-security.admission.config.k8s.io/v1alpha1", configuration["apiVersion"])
+	assert.Equal(t, "PodSecurityConfiguration", configuration["kind"])
+	assert.Equal(t, "privileged", defaults["enforce"])
+	assert.Equal(t, "privileged", defaults["audit"])
+	assert.Equal(t, "privileged", defaults["warn"])
+	assert.Equal(t, "bar", mapResult["foo"])
+	assert.Equal(t, "bar", clusterMap["foo"])
+	helperService.AssertNumberOfCalls(t, "GetConfigDir", 1)
+	mockOs.AssertNumberOfCalls(t, "ReadFile", 1)
+	mockOs.AssertNumberOfCalls(t, "WriteFile", 1)
+
+	osReadFile = os.ReadFile
+	osWriteFile = os.WriteFile
+}
+
+func Test_DisablePodSecurity_Fails_IfConfigNotValid(t *testing.T) {
+	mockOs := mocks.MockOs{}
+	mockOs.On("ReadFile", mock.Anything).Return([]byte("invalid yaml"), nil)
+	osReadFile = mockOs.ReadFile
+
+	helperService := mocks.MockHelperService{}
+	helperService.On("GetConfigDir").Return("test")
+
+	talosService := TalosService{}
+	err := talosService.DisablePodSecurity(&helperService)
+
+	assert.NotNil(t, err)
+	helperService.AssertNumberOfCalls(t, "GetConfigDir", 1)
+	mockOs.AssertNumberOfCalls(t, "ReadFile", 1)
+
+	osReadFile = os.ReadFile
+}

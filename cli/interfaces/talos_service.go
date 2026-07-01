@@ -14,6 +14,7 @@ type TalosServiceInterface interface {
 	ModifyNetworkHostname(helperService HelperServiceInterface, configFile string, hostname string) error
 	ModifyConfigDisk(helperService HelperServiceInterface, configFile string, disk string) error
 	ModifySchedulingOnControlPlane(helperService HelperServiceInterface, allowScheduling bool) error
+	DisablePodSecurity(helperService HelperServiceInterface) error
 	GetControlPlaneIp(helperService HelperServiceInterface, configFile string) (string, error)
 	DownloadKubeConfig(helperService HelperServiceInterface, nodeIp string, controlPlaneIp string) error
 }
