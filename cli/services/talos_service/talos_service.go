@@ -135,7 +135,7 @@ func (talosService TalosService) GetDisks(helperService interfaces.HelperService
 }
 
 func (talosService TalosService) GetNetworkInterface(helperService interfaces.HelperServiceInterface, nodeIp string) (string, error) {
-	cmd := execCommand("bash", "-c", fmt.Sprintf(`talosctl -n %s get addresses --talosconfig %s  --insecure |  awk '$0 ~ /%s/ {print $0}' | awk '{$1=""; print $NF}' | awk '{print $NF}'`, nodeIp, helperService.GetConfigFilePath(constants.TalosConfigFile), nodeIp))
+	cmd := execCommand("talosctl", "-n", nodeIp, "get", "addresses", "--talosconfig", helperService.GetConfigFilePath(constants.TalosConfigFile), "--insecure")
 	output, err := cmd.CombinedOutput()
 	logger.Debug(string(output))
 
@@ -143,8 +143,31 @@ func (talosService TalosService) GetNetworkInterface(helperService interfaces.He
 		return "", err
 	}
 
-	parsedOutput := strings.TrimSpace(string(output))
-	return parsedOutput, nil
+	return parseNetworkInterface(string(output), nodeIp)
+}
+
+// parseNetworkInterface picks the link that currently holds nodeIp out of a
+// "talosctl get addresses" table. Rows are matched on the address column rather than on the
+// line as a whole: talosctl repeats the node's IP in the NODE column of every row, so a
+// whole-line match returns every link on the machine - loopback included - instead of one.
+func parseNetworkInterface(output string, nodeIp string) (string, error) {
+	for _, line := range strings.Split(output, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+
+		for _, field := range fields {
+			// the address column carries the address in CIDR form, and the link it belongs
+			// to is the last column; the trailing slash keeps 192.168.1.16 from matching
+			// 192.168.1.161
+			if strings.HasPrefix(field, nodeIp+"/") {
+				return fields[len(fields)-1], nil
+			}
+		}
+	}
+
+	return "", fmt.Errorf("could not find a network interface holding %s in:\n%s", nodeIp, strings.TrimSpace(output))
 }
 
 func (talosService TalosService) ModifyNetworkInterface(helperService interfaces.HelperServiceInterface, configFile string, networkInterfaceName string) error {
