@@ -1,13 +1,21 @@
 package helm_service
 
 import (
+	"bytes"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/misc/logger"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/models"
+	"gopkg.in/yaml.v3"
 )
 
 var execCommand = exec.Command
+var osMkdirTemp = os.MkdirTemp
+var yamlMarshal = yaml.Marshal
 
 type HelmService struct{}
 
@@ -29,12 +37,15 @@ func (HelmService HelmService) AddRepo(repoName string, repoUrl string) error {
 	return nil
 }
 
-func (HelmService HelmService) InstallChart(pkgName string, chartName string, repoName string, version string, namespace string, context string) error {
-	cmd := execCommand("helm", "install", pkgName, fmt.Sprintf("%s/%s", repoName, chartName),
+func (HelmService HelmService) InstallChart(pkgName string, chartName string, repoName string, version string, namespace string, context string, values map[string]interface{}) error {
+	cmd, err := helmCommandWithValues(values, "install", pkgName, fmt.Sprintf("%s/%s", repoName, chartName),
 		"--version", version,
 		"--namespace", namespace,
 		"--create-namespace",
 		"--kube-context", context)
+	if err != nil {
+		return fmt.Errorf("Failed to install helm package `%s`: %w", pkgName, err)
+	}
 	logger.Debug(fmt.Sprintf("Installing helm chart `%s` from repo `%s` with version `%s` in namespace `%s`", pkgName, repoName, version, namespace))
 	logger.Debug(fmt.Sprintf("Command: %s", cmd.String()))
 
@@ -42,22 +53,59 @@ func (HelmService HelmService) InstallChart(pkgName string, chartName string, re
 	logger.Debug(fmt.Sprintf("Response: %s", string(response)))
 
 	if err != nil {
-		return fmt.Errorf("Failed to install helm package `%s`: %w", pkgName, err)
+		return fmt.Errorf("Failed to install helm package `%s`: %w%s", pkgName, err, helmOutput(response))
 	}
 	return nil
 }
 
-func (HelmService HelmService) UpgradeChart(pkgName string, chartName string, repoName string, version string, namespace string, context string) error {
-	cmd := execCommand("helm", "upgrade", pkgName, fmt.Sprintf("%s/%s", repoName, chartName),
+func (HelmService HelmService) UpgradeChart(pkgName string, chartName string, repoName string, version string, namespace string, context string, values map[string]interface{}) error {
+	cmd, err := helmCommandWithValues(values, "upgrade", pkgName, fmt.Sprintf("%s/%s", repoName, chartName),
 		"--version", version,
 		"--namespace", namespace,
 		"--create-namespace",
 		"--kube-context", context)
-
-	if err := cmd.Run(); err != nil {
+	if err != nil {
 		return fmt.Errorf("Failed to upgrade helm package `%s`: %w", pkgName, err)
 	}
+
+	if response, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("Failed to upgrade helm package `%s`: %w%s", pkgName, err, helmOutput(response))
+	}
 	return nil
+}
+
+// Downloads a chart without adding its repository, to read its values and schema
+func (HelmService HelmService) PullChart(repositoryUrl string, chartName string, version string) (*models.HelmChart, error) {
+	destination, err := osMkdirTemp("", "bbe-chart-")
+	if err != nil {
+		return nil, fmt.Errorf("Failed to create a directory for helm chart `%s`: %w", chartName, err)
+	}
+	defer os.RemoveAll(destination)
+
+	cmd := execCommand("helm", "pull", chartName,
+		"--repo", repositoryUrl,
+		"--version", version,
+		"--destination", destination)
+	logger.Debug(fmt.Sprintf("Pulling helm chart `%s` with version `%s` from `%s`", chartName, version, repositoryUrl))
+
+	response, err := cmd.CombinedOutput()
+	logger.Debug(fmt.Sprintf("Response: %s", string(response)))
+
+	if err != nil {
+		return nil, fmt.Errorf("Failed to pull helm chart `%s`: %w%s", chartName, err, helmOutput(response))
+	}
+
+	archives, _ := filepath.Glob(filepath.Join(destination, "*.tgz"))
+	if len(archives) != 1 {
+		return nil, fmt.Errorf("Failed to find the archive for helm chart `%s`", chartName)
+	}
+
+	chart, err := readChartArchive(archives[0])
+	if err != nil {
+		return nil, fmt.Errorf("Failed to read helm chart `%s`: %w", chartName, err)
+	}
+
+	return chart, nil
 }
 
 func (HelmService HelmService) UninstallChart(pkgName string, namespace string, context string) error {
@@ -94,4 +142,31 @@ func (HelmService HelmService) updateRepo(repoName string) error {
 	}
 
 	return nil
+}
+
+// Values are passed on stdin, so no temporary file is needed
+func helmCommandWithValues(values map[string]interface{}, args ...string) (*exec.Cmd, error) {
+	if len(values) == 0 {
+		return execCommand("helm", args...), nil
+	}
+
+	content, err := yamlMarshal(values)
+	if err != nil {
+		return nil, err
+	}
+
+	cmd := execCommand("helm", append(args, "--values", "-")...)
+	cmd.Stdin = bytes.NewReader(content)
+
+	return cmd, nil
+}
+
+// Helm explains why a command failed in its output, which is more useful than the exit status
+func helmOutput(response []byte) string {
+	output := strings.TrimSpace(string(response))
+	if output == "" {
+		return ""
+	}
+
+	return "\n" + output
 }

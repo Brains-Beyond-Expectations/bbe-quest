@@ -205,8 +205,8 @@ func Test_upgradeCommand_Fails_Prtial_UpdatesBbeConfig(t *testing.T) {
 	}
 	configService.On("GetBbeConfig", mock.Anything).Return(bbeConfig, nil)
 
-	packageService.On("UpgradePackage", mock.Anything).Return(nil).Once()
-	packageService.On("UpgradePackage", mock.Anything).Return(errors.New("test error")).Once()
+	packageService.On("UpgradePackage", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Once()
+	packageService.On("UpgradePackage", mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New("test error")).Once()
 
 	mockSuccessfulUpgradeFlow(helperService, uiService, configService, packageService)
 
@@ -227,6 +227,60 @@ func Test_upgradeCommand_Fails_Prtial_UpdatesBbeConfig(t *testing.T) {
 			Version: "1.0.0",
 		},
 	})
+}
+
+func Test_upgradeCommand_Succeeds_StoringPackageValues(t *testing.T) {
+	helperService, uiService, configService, packageService, helmService := initUpgradeCommand()
+
+	storedValues := map[string]interface{}{"service": map[string]interface{}{"ip": "192.168.1.240"}}
+	upgradedValues := map[string]interface{}{"service": map[string]interface{}{"ip": "192.168.1.240"}, "password": "entered"}
+	bbeConfig := &models.BbeConfig{}
+	bbeConfig.Bbe.Cluster.Name = "test"
+	bbeConfig.Bbe.Packages = []models.LocalPackage{
+		{
+			Name:    "package_one",
+			Version: "1.0.0",
+			Values:  storedValues,
+		},
+	}
+	configService.On("GetBbeConfig", mock.Anything).Return(bbeConfig, nil)
+	uiService.On("CreateSelect", mock.Anything, mock.Anything).Return("Yes", nil)
+	packageService.On("UpgradePackage", models.ChartEntry{Name: "package_one", Version: "2.0.0"}, storedValues, true).Return(upgradedValues, nil)
+
+	mockSuccessfulUpgradeFlow(helperService, uiService, configService, packageService)
+
+	err := upgradeCommand(helperService, uiService, configService, packageService, helmService, false)
+
+	assert.Nil(t, err)
+	packageService.AssertNumberOfCalls(t, "UpgradePackage", 1)
+	configService.AssertCalled(t, "UpdateBbePackages", mock.Anything, []models.LocalPackage{
+		{
+			Name:    "package_one",
+			Version: "2.0.0",
+			Values:  upgradedValues,
+		},
+	})
+}
+
+func Test_upgradeCommand_Succeeds_WithoutPromptsWhenNonInteractive(t *testing.T) {
+	helperService, uiService, configService, packageService, helmService := initUpgradeCommand()
+
+	bbeConfig := &models.BbeConfig{}
+	bbeConfig.Bbe.Cluster.Name = "test"
+	bbeConfig.Bbe.Packages = []models.LocalPackage{
+		{
+			Name:    "package_one",
+			Version: "1.0.0",
+		},
+	}
+	configService.On("GetBbeConfig", mock.Anything).Return(bbeConfig, nil)
+
+	mockSuccessfulUpgradeFlow(helperService, uiService, configService, packageService)
+
+	err := upgradeCommand(helperService, uiService, configService, packageService, helmService, true)
+
+	assert.Nil(t, err)
+	packageService.AssertCalled(t, "UpgradePackage", models.ChartEntry{Name: "package_one", Version: "2.0.0"}, map[string]interface{}(nil), false)
 }
 
 func initUpgradeCommand() (*mocks.MockHelperService, *mocks.MockUiService, *mocks.MockConfigService, *mocks.MockPackageService, *mocks.MockHelmService) {
@@ -261,5 +315,5 @@ func mockSuccessfulUpgradeFlow(_ *mocks.MockHelperService, uiService *mocks.Mock
 			Version: "3.0.0",
 		},
 	}, nil)
-	packageService.On("UpgradePackage", mock.Anything).Return(nil)
+	packageService.On("UpgradePackage", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 }

@@ -1,6 +1,7 @@
 package mocks
 
 import (
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/models"
 	"github.com/stretchr/testify/mock"
 )
 
@@ -13,13 +14,13 @@ func (m *MockHelmService) AddRepo(repoName string, repoUrl string) error {
 	return args.Error(0)
 }
 
-func (m *MockHelmService) InstallChart(pkgName string, chartName string, repoName string, version string, namespace string, context string) error {
-	args := m.Called(pkgName, chartName, repoName, version, namespace, context)
+func (m *MockHelmService) InstallChart(pkgName string, chartName string, repoName string, version string, namespace string, context string, values map[string]interface{}) error {
+	args := m.Called(pkgName, chartName, repoName, version, namespace, context, values)
 	return args.Error(0)
 }
 
-func (m *MockHelmService) UpgradeChart(pkgName string, chartName string, repoName string, version string, namespace string, context string) error {
-	args := m.Called(pkgName, chartName, repoName, version, namespace, context)
+func (m *MockHelmService) UpgradeChart(pkgName string, chartName string, repoName string, version string, namespace string, context string, values map[string]interface{}) error {
+	args := m.Called(pkgName, chartName, repoName, version, namespace, context, values)
 	return args.Error(0)
 }
 
@@ -36,4 +37,10 @@ func (m *MockHelmService) Status(pkgName string, namespace string, context strin
 func (m *MockHelmService) IsPackageInstalled(pkgName string, namespace string, context string) bool {
 	args := m.Called(pkgName, namespace, context)
 	return args.Bool(0)
+}
+
+func (m *MockHelmService) PullChart(repositoryUrl string, chartName string, version string) (*models.HelmChart, error) {
+	args := m.Called(repositoryUrl, chartName, version)
+	chart, _ := args.Get(0).(*models.HelmChart)
+	return chart, args.Error(1)
 }
