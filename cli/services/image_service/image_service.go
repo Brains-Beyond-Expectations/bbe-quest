@@ -21,7 +21,7 @@ type ImageService struct{}
 // local talosctl client has drifted from the version the node image was built for, and
 // to pin `talosctl gen config` to the same schema version the node image was built for
 // (see TalosService.GenerateConfig).
-const talosImageVersion = "v1.9.0"
+const talosImageVersion = "v1.14.1"
 
 var IntelNuc = models.NodeType{
 	OutputFile:   "metal-amd64.iso",

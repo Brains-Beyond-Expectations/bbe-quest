@@ -14,7 +14,6 @@ import (
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/interfaces"
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/misc/logger"
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/models"
-	"github.com/go-viper/mapstructure/v2"
 	"gopkg.in/yaml.v2"
 )
 
@@ -252,116 +251,172 @@ func parseNetworkInterface(output string, nodeIp string) (string, error) {
 	return "", fmt.Errorf("could not find a network interface holding %s in:\n%s", nodeIp, strings.TrimSpace(output))
 }
 
+// ModifyNetworkInterface, ModifyNetworkGateway and ModifyNetworkNodeIp all target the same
+// LinkConfig document - bbe only ever manages a single interface, the same "one interface"
+// assumption the old single-document format's Interfaces[0] convention made.
 func (talosService TalosService) ModifyNetworkInterface(helperService interfaces.HelperServiceInterface, configFile string, networkInterfaceName string) error {
 	configDir := helperService.GetConfigDir()
 
-	parsedConfig, err := getParsedConfig(configDir, configFile)
+	documents, err := getParsedDocuments(configDir, configFile)
 	if err != nil {
 		return err
 	}
 
-	if len(parsedConfig.Machine.Network.Interfaces) == 0 {
-		parsedConfig.Machine.Network.Interfaces = append(parsedConfig.Machine.Network.Interfaces, models.TalosInterface{})
+	var linkConfig models.TalosLinkConfig
+	index, err := getOrCreateDocument(&documents, models.TalosLinkConfigKind, &linkConfig)
+	if err != nil {
+		return err
 	}
 
-	parsedConfig.Machine.Network.Interfaces[0].Interface = networkInterfaceName
+	linkConfig.Name = networkInterfaceName
 
-	return writeConfig(configDir, configFile, *parsedConfig)
+	if err := setDocument(documents, index, linkConfig); err != nil {
+		return err
+	}
+
+	return writeDocuments(configDir, configFile, documents)
 }
 
 func (talosService TalosService) ModifyNetworkGateway(helperService interfaces.HelperServiceInterface, configFile string, gatewayIp string) error {
 	configDir := helperService.GetConfigDir()
 
-	parsedConfig, err := getParsedConfig(configDir, configFile)
+	documents, err := getParsedDocuments(configDir, configFile)
 	if err != nil {
 		return err
 	}
 
-	if len(parsedConfig.Machine.Network.Interfaces) == 0 {
-		parsedConfig.Machine.Network.Interfaces = append(parsedConfig.Machine.Network.Interfaces, models.TalosInterface{})
+	var linkConfig models.TalosLinkConfig
+	index, err := getOrCreateDocument(&documents, models.TalosLinkConfigKind, &linkConfig)
+	if err != nil {
+		return err
 	}
 
-	routes := []models.TalosRoute{
-		{
-			Network: "0.0.0.0/0",
-			Gateway: gatewayIp,
-		},
+	linkConfig.Routes = []models.TalosLinkRoute{{Gateway: gatewayIp}}
+
+	if err := setDocument(documents, index, linkConfig); err != nil {
+		return err
 	}
 
-	parsedConfig.Machine.Network.Interfaces[0].Routes = routes
-
-	return writeConfig(configDir, configFile, *parsedConfig)
+	return writeDocuments(configDir, configFile, documents)
 }
 
 func (talosService TalosService) ModifyNetworkNodeIp(helperService interfaces.HelperServiceInterface, configFile string, nodeIp string) error {
 	configDir := helperService.GetConfigDir()
 
-	parsedConfig, err := getParsedConfig(configDir, configFile)
+	documents, err := getParsedDocuments(configDir, configFile)
 	if err != nil {
 		return err
 	}
 
-	if len(parsedConfig.Machine.Network.Interfaces) == 0 {
-		parsedConfig.Machine.Network.Interfaces = append(parsedConfig.Machine.Network.Interfaces, models.TalosInterface{})
+	var linkConfig models.TalosLinkConfig
+	index, err := getOrCreateDocument(&documents, models.TalosLinkConfigKind, &linkConfig)
+	if err != nil {
+		return err
 	}
 
-	addresses := []string{nodeIp}
+	// LinkConfig addresses require CIDR notation (netip.Prefix); assume a /24, matching
+	// ModifyNetworkGateway's existing hardcoded assumption of a typical home-LAN topology.
+	linkConfig.Addresses = []models.TalosLinkAddress{{Address: fmt.Sprintf("%s/24", nodeIp)}}
 
-	parsedConfig.Machine.Network.Interfaces[0].Addresses = addresses
+	if err := setDocument(documents, index, linkConfig); err != nil {
+		return err
+	}
 
-	return writeConfig(configDir, configFile, *parsedConfig)
+	return writeDocuments(configDir, configFile, documents)
 }
 
 func (talosService TalosService) ModifyNetworkHostname(helperService interfaces.HelperServiceInterface, configFile string, hostname string) error {
 	configDir := helperService.GetConfigDir()
 
-	parsedConfig, err := getParsedConfig(configDir, configFile)
+	documents, err := getParsedDocuments(configDir, configFile)
 	if err != nil {
 		return err
 	}
 
-	parsedConfig.Machine.Network.Hostname = hostname
+	var hostnameConfig models.TalosHostnameConfig
+	index, err := getDocument(documents, models.TalosHostnameConfigKind, &hostnameConfig)
+	if err != nil {
+		return err
+	}
 
-	return writeConfig(configDir, configFile, *parsedConfig)
+	// hostname and auto are mutually exclusive in Talos's schema.
+	hostnameConfig.Auto = ""
+	hostnameConfig.Hostname = hostname
+
+	if err := setDocument(documents, index, hostnameConfig); err != nil {
+		return err
+	}
+
+	return writeDocuments(configDir, configFile, documents)
 }
 
 func (talosService TalosService) ModifyConfigDisk(helperService interfaces.HelperServiceInterface, configFile string, disk string) error {
 	configDir := helperService.GetConfigDir()
 
-	parsedConfig, err := getParsedConfig(configDir, configFile)
+	documents, err := getParsedDocuments(configDir, configFile)
 	if err != nil {
 		return err
 	}
 
-	parsedConfig.Machine.Install.Disk = disk
+	var installConfig models.TalosUnattendedInstallConfig
+	index, err := getDocument(documents, models.TalosUnattendedInstallConfigKind, &installConfig)
+	if err != nil {
+		return err
+	}
 
-	return writeConfig(configDir, configFile, *parsedConfig)
+	// The disk is selected via a CEL expression, not a bare path.
+	installConfig.Provisioning.DiskSelector.Match = fmt.Sprintf("disk.dev_path == %q", disk)
+
+	if err := setDocument(documents, index, installConfig); err != nil {
+		return err
+	}
+
+	return writeDocuments(configDir, configFile, documents)
 }
 
 func (talosService TalosService) ModifySchedulingOnControlPlane(helperService interfaces.HelperServiceInterface, allowScheduling bool) error {
 	configDir := helperService.GetConfigDir()
 	configFile := constants.ControlplaneConfigFile
 
-	parsedConfig, err := getParsedConfig(configDir, configFile)
+	documents, err := getParsedDocuments(configDir, configFile)
 	if err != nil {
 		return err
 	}
 
-	parsedConfig.Cluster.AllowSchedulingOnControlPlanes = allowScheduling
+	var kubeNodeConfig models.TalosKubeNodeConfig
+	index, err := getDocument(documents, models.TalosKubeNodeConfigKind, &kubeNodeConfig)
+	if err != nil {
+		return err
+	}
 
-	return writeConfig(configDir, configFile, *parsedConfig)
+	// Scheduling on control planes is controlled by the control-plane NoSchedule taint,
+	// not a boolean field - allowing scheduling means removing that taint.
+	kubeNodeConfig.Taints = map[string]string{}
+	if !allowScheduling {
+		kubeNodeConfig.Taints[models.TalosControlPlaneTaint] = "NoSchedule"
+	}
+
+	if err := setDocument(documents, index, kubeNodeConfig); err != nil {
+		return err
+	}
+
+	return writeDocuments(configDir, configFile, documents)
 }
 
 func (talosService TalosService) GetControlPlaneIp(helperService interfaces.HelperServiceInterface, configFile string) (string, error) {
 	configDir := helperService.GetConfigDir()
 
-	config, err := getParsedConfig(configDir, configFile)
+	documents, err := getParsedDocuments(configDir, configFile)
 	if err != nil {
 		return "", err
 	}
 
-	endpoint := config.Cluster.ControlPlane.Endpoint
-	endpoint = strings.TrimPrefix(endpoint, "https://")
+	var kubeClusterConfig models.TalosKubeClusterConfig
+	if _, err := getDocument(documents, models.TalosKubeClusterConfigKind, &kubeClusterConfig); err != nil {
+		return "", err
+	}
+
+	endpoint := strings.TrimPrefix(kubeClusterConfig.Endpoint, "https://")
 	endpoint = strings.TrimSuffix(endpoint, ":6443")
 
 	return endpoint, nil
@@ -379,38 +434,116 @@ func (talosService TalosService) DownloadKubeConfig(helperService interfaces.Hel
 	return nil
 }
 
-func getParsedConfig(configDir string, configFile string) (*models.TalosMachineConfig, error) {
+// getParsedDocuments reads every YAML document in a Talos machine config file. Since Talos
+// v1.14, gen config splits settings across many small typed documents (separated by "---",
+// each with its own "kind") instead of one monolithic document; every document must be
+// preserved even though bbe only ever inspects a handful of them.
+func getParsedDocuments(configDir string, configFile string) ([]map[string]interface{}, error) {
 	initialTalosConfig, err := osReadFile(fmt.Sprintf("%s/%s", configDir, configFile))
 	if err != nil {
 		panic(err)
 	}
 
-	var yamlConfig map[string]interface{}
-	err = yaml.Unmarshal(initialTalosConfig, &yamlConfig)
-	if err != nil {
-		return nil, err
+	decoder := yaml.NewDecoder(bytes.NewReader(initialTalosConfig))
+
+	var documents []map[string]interface{}
+	for {
+		var document map[string]interface{}
+		err := decoder.Decode(&document)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		documents = append(documents, document)
 	}
 
-	var parsedConfig models.TalosMachineConfig
-	err = mapstructure.Decode(yamlConfig, &parsedConfig)
-	if err != nil {
-		return nil, err
-	}
-
-	return &parsedConfig, nil
+	return documents, nil
 }
 
-func writeConfig(configDir string, configFile string, parsedConfig models.TalosMachineConfig) error {
-	mappedConfig := make(map[string]interface{})
-	err := mapstructure.Decode(&parsedConfig, &mappedConfig)
+func writeDocuments(configDir string, configFile string, documents []map[string]interface{}) error {
+	marshaledDocuments := make([]string, 0, len(documents))
+	for _, document := range documents {
+		marshaled, err := yaml.Marshal(document)
+		if err != nil {
+			return err
+		}
+
+		marshaledDocuments = append(marshaledDocuments, string(marshaled))
+	}
+
+	configToWrite := strings.Join(marshaledDocuments, "---\n")
+
+	return osWriteFile(fmt.Sprintf("%s/%s", configDir, configFile), []byte(configToWrite), 0644)
+}
+
+// findDocument returns the document matching kind along with its position, or -1 when the
+// config doesn't contain one.
+func findDocument(documents []map[string]interface{}, kind string) (map[string]interface{}, int) {
+	for index, document := range documents {
+		if document["kind"] == kind {
+			return document, index
+		}
+	}
+
+	return nil, -1
+}
+
+// getDocument decodes the document matching kind into target, returning its position so it
+// can be written back with setDocument.
+func getDocument(documents []map[string]interface{}, kind string, target interface{}) (int, error) {
+	document, index := findDocument(documents, kind)
+	if index == -1 {
+		return -1, fmt.Errorf("%s document not found in config", kind)
+	}
+
+	return index, decodeDocument(document, target)
+}
+
+// getOrCreateDocument behaves like getDocument, but appends a new document when the config
+// doesn't contain one yet - Talos doesn't generate every document kind by default.
+func getOrCreateDocument(documents *[]map[string]interface{}, kind string, target interface{}) (int, error) {
+	document, index := findDocument(*documents, kind)
+	if index == -1 {
+		document = map[string]interface{}{
+			"apiVersion": models.TalosConfigApiVersion,
+			"kind":       kind,
+		}
+		*documents = append(*documents, document)
+		index = len(*documents) - 1
+	}
+
+	return index, decodeDocument(document, target)
+}
+
+// setDocument encodes source back over the document at index, keeping every other document
+// in the config untouched.
+func setDocument(documents []map[string]interface{}, index int, source interface{}) error {
+	encoded, err := yaml.Marshal(source)
 	if err != nil {
 		return err
 	}
 
-	configToWrite, err := yaml.Marshal(mappedConfig)
+	document := make(map[string]interface{})
+	if err := yaml.Unmarshal(encoded, &document); err != nil {
+		return err
+	}
+
+	documents[index] = document
+
+	return nil
+}
+
+// decodeDocument moves a raw document into a typed model. It goes through YAML rather than
+// a map decoder so the models' yaml tags - including the inlined Unmapped fields that carry
+// unknown keys - apply at every level of the document, not just the top one.
+func decodeDocument(document map[string]interface{}, target interface{}) error {
+	encoded, err := yaml.Marshal(document)
 	if err != nil {
 		return err
 	}
 
-	return osWriteFile(fmt.Sprintf("%s/%s", configDir, configFile), configToWrite, 0644)
+	return yaml.Unmarshal(encoded, target)
 }
