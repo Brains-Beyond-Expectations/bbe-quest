@@ -219,20 +219,98 @@ func Test_VerifyNodeHealth_Fails_AfterTimeout(t *testing.T) {
 	helperService.AssertNumberOfCalls(t, "GetConfigFilePath", 1)
 }
 
-func Test_GetDisks_Succeeds(t *testing.T) {
+// trimmed from real "talosctl get disks -o yaml" output: one document per disk, including the
+// read-only loop devices backing the running system and the USB stick the installer booted from
+const disksOutput = `node: 192.168.1.50
+metadata:
+    namespace: runtime
+    type: Disks.block.talos.dev
+    id: loop0
+spec:
+    dev_path: /dev/loop0
+    pretty_size: 4.1 kB
+    readonly: true
+    cdrom: false
+---
+node: 192.168.1.50
+metadata:
+    namespace: runtime
+    type: Disks.block.talos.dev
+    id: nvme0n1
+spec:
+    dev_path: /dev/nvme0n1
+    pretty_size: 256 GB
+    readonly: false
+    cdrom: false
+    model: PC300 NVMe SK hynix 256GB
+    transport: nvme
+---
+node: 192.168.1.50
+metadata:
+    namespace: runtime
+    type: Disks.block.talos.dev
+    id: sda
+spec:
+    dev_path: /dev/sda
+    pretty_size: 8.1 GB
+    readonly: false
+    cdrom: false
+    model: ProductCode
+    transport: usb
+---
+node: 192.168.1.50
+metadata:
+    namespace: runtime
+    type: Disks.block.talos.dev
+    id: sr0
+spec:
+    dev_path: /dev/sr0
+    pretty_size: 1.1 GB
+    readonly: false
+    cdrom: true
+`
+
+func Test_GetDisks_Succeeds_ReturnsOnlyInstallableDisks(t *testing.T) {
 	execCommand = func(_ string, _ ...string) *exec.Cmd {
-		return exec.Command("bash", "-c", "echo disk1")
+		return exec.Command("echo", disksOutput)
 	}
 
-	helperService := mocks.MockHelperService{}
-	helperService.On("DeleteEmptyStrings", []string{"disk1", ""}).Return([]string{"disk1"})
+	talosService := TalosService{}
+	disks, err := talosService.GetDisks("192.168.1.50")
+
+	assert.Nil(t, err)
+	// the read-only loop device and the CD-ROM are not installable
+	assert.Len(t, disks, 2)
+	assert.Equal(t, "/dev/nvme0n1", disks[0].Spec.DevPath)
+	assert.Equal(t, "256 GB", disks[0].Spec.PrettySize)
+	assert.Equal(t, "PC300 NVMe SK hynix 256GB", disks[0].Spec.Model)
+	assert.Equal(t, "nvme", disks[0].Spec.Transport)
+	assert.Equal(t, "/dev/sda", disks[1].Spec.DevPath)
+	assert.Equal(t, "usb", disks[1].Spec.Transport)
+}
+
+func Test_GetDisks_Succeeds_WithNoInstallableDisks(t *testing.T) {
+	execCommand = func(_ string, _ ...string) *exec.Cmd {
+		return exec.Command("echo", "spec:\n    dev_path: /dev/loop0\n    readonly: true\n")
+	}
 
 	talosService := TalosService{}
-	disks, err := talosService.GetDisks(&helperService, "127.0.0.1")
+	disks, err := talosService.GetDisks("192.168.1.50")
 
-	assert.NotNil(t, disks)
 	assert.Nil(t, err)
-	helperService.AssertNumberOfCalls(t, "DeleteEmptyStrings", 1)
+	assert.Empty(t, disks)
+}
+
+func Test_GetDisks_Fails_IfOutputUnparsable(t *testing.T) {
+	execCommand = func(_ string, _ ...string) *exec.Cmd {
+		return exec.Command("echo", "spec: [not a map")
+	}
+
+	talosService := TalosService{}
+	disks, err := talosService.GetDisks("192.168.1.50")
+
+	assert.NotNil(t, err)
+	assert.Nil(t, disks)
 }
 
 func Test_GetDisks_Fails_IfTalosCtlFails(t *testing.T) {
@@ -240,14 +318,11 @@ func Test_GetDisks_Fails_IfTalosCtlFails(t *testing.T) {
 		return exec.Command("exit", "1")
 	}
 
-	helperService := mocks.MockHelperService{}
-
 	talosService := TalosService{}
-	disks, err := talosService.GetDisks(&helperService, "127.0.0.1")
+	disks, err := talosService.GetDisks("192.168.1.50")
 
 	assert.Nil(t, disks)
 	assert.NotNil(t, err)
-	helperService.AssertNumberOfCalls(t, "DeleteEmptyStrings", 0)
 }
 
 // realistic "talosctl get addresses" output: talosctl repeats the node IP in the NODE

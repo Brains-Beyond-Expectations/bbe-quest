@@ -4,6 +4,7 @@ import (
 	"os/exec"
 
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/interfaces"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/models"
 	"github.com/stretchr/testify/mock"
 )
 
@@ -39,9 +40,10 @@ func (m *MockTalosService) VerifyNodeHealth(helperService interfaces.HelperServi
 	return args.Error(0)
 }
 
-func (m *MockTalosService) GetDisks(helperService interfaces.HelperServiceInterface, nodeIp string) ([]string, error) {
-	args := m.Called(helperService, nodeIp)
-	return args.Get(0).([]string), args.Error(1)
+func (m *MockTalosService) GetDisks(nodeIp string) ([]models.TalosDisk, error) {
+	args := m.Called(nodeIp)
+	disks, _ := args.Get(0).([]models.TalosDisk)
+	return disks, args.Error(1)
 }
 
 func (m *MockTalosService) GetNetworkInterface(helperService interfaces.HelperServiceInterface, nodeIp string) (string, error) {
