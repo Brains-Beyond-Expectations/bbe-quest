@@ -12,12 +12,34 @@ const (
 	TalosHostnameConfigKind          = "HostnameConfig"
 	TalosUnattendedInstallConfigKind = "UnattendedInstallConfig"
 	TalosKubeClusterConfigKind       = "KubeClusterConfig"
+	TalosResolverConfigKind          = "ResolverConfig"
 	TalosKubeNodeConfigKind          = "KubeNodeConfig"
 )
 
 // TalosControlPlaneTaint keeps workloads off control plane nodes; removing it is what
 // allows scheduling on them.
 const TalosControlPlaneTaint = "node-role.kubernetes.io/control-plane"
+
+// TalosMachineConfig is the primary (kind-less) v1alpha1.Config document. Only the settings
+// bbe modifies are modelled - the rest of the document, including the machine's PKI and
+// tokens, is preserved through the inlined Unmapped fields.
+type TalosMachineConfig struct {
+	Machine  TalosMachine           `yaml:"machine,omitempty"`
+	Unmapped map[string]interface{} `yaml:",inline"`
+}
+
+type TalosMachine struct {
+	Time     TalosMachineTime       `yaml:"time,omitempty"`
+	Unmapped map[string]interface{} `yaml:",inline"`
+}
+
+// TalosMachineTime configures NTP. Talos falls back to a public time server when no servers
+// are set, which leaves the node unable to sync its clock on networks that don't allow
+// outbound NTP - and a node with the wrong time fails certificate validation on boot.
+type TalosMachineTime struct {
+	Servers  []string               `yaml:"servers,omitempty"`
+	Unmapped map[string]interface{} `yaml:",inline"`
+}
 
 // TalosLinkConfig configures a single network link. Talos does not generate this document
 // by default - it assumes DHCP until a link is configured explicitly.
@@ -41,6 +63,21 @@ type TalosLinkRoute struct {
 	Destination string                 `yaml:"destination,omitempty"`
 	Gateway     string                 `yaml:"gateway,omitempty"`
 	Unmapped    map[string]interface{} `yaml:",inline"`
+}
+
+// TalosResolverConfig sets the DNS nameservers. This has to be set whenever bbe assigns a
+// static address: applying any LinkConfig disables DHCP on that link, and DHCP is what
+// would otherwise supply the node's nameservers.
+type TalosResolverConfig struct {
+	ApiVersion  string                 `yaml:"apiVersion,omitempty"`
+	Kind        string                 `yaml:"kind,omitempty"`
+	Nameservers []TalosNameserver      `yaml:"nameservers,omitempty"`
+	Unmapped    map[string]interface{} `yaml:",inline"`
+}
+
+type TalosNameserver struct {
+	Address  string                 `yaml:"address,omitempty"`
+	Unmapped map[string]interface{} `yaml:",inline"`
 }
 
 // TalosHostnameConfig sets the machine's hostname. Hostname and Auto are mutually

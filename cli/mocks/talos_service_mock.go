@@ -86,6 +86,16 @@ func (m *MockTalosService) ModifySchedulingOnControlPlane(helperService interfac
 	return args.Error(0)
 }
 
+func (m *MockTalosService) ModifyDnsServer(helperService interfaces.HelperServiceInterface, configFile string, dnsServer string) error {
+	args := m.Called(helperService, configFile, dnsServer)
+	return args.Error(0)
+}
+
+func (m *MockTalosService) ModifyTimeServer(helperService interfaces.HelperServiceInterface, configFile string, timeServer string) error {
+	args := m.Called(helperService, configFile, timeServer)
+	return args.Error(0)
+}
+
 func (m *MockTalosService) GetControlPlaneIp(helperService interfaces.HelperServiceInterface, configFile string) (string, error) {
 	args := m.Called(helperService, configFile)
 	return args.Get(0).(string), args.Error(1)
