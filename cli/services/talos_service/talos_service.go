@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 
@@ -23,6 +24,8 @@ var fiveMinutes = 5 * time.Minute
 
 var osReadFile = os.ReadFile
 var osWriteFile = os.WriteFile
+
+var talosVersionRegex = regexp.MustCompile(`Talos\s+(v[0-9]+\.[0-9]+\.[0-9]+)`)
 
 type TalosService struct{}
 
@@ -44,8 +47,61 @@ func (talosService TalosService) Ping(nodeIp string) bool {
 	return err != nil
 }
 
-func (talosService TalosService) GenerateConfig(helperService interfaces.HelperServiceInterface, controlPlaneIp string, clusterName string) error {
-	cmd := execCommand("talosctl", "gen", "config", clusterName, fmt.Sprintf("https://%s:6443", controlPlaneIp), "--output", helperService.GetConfigDir())
+/**
+ * WarnIfTalosVersionMismatch compares the locally installed talosctl client against
+ * expectedVersion (the Talos version the node's image was built for) and logs a
+ * warning on a mismatch. It does not query the node directly: nodes are still in
+ * maintenance mode at the point this runs, and maintenance mode does not implement
+ * the version RPC.
+ */
+func (talosService TalosService) WarnIfTalosVersionMismatch(expectedVersion string) {
+	localVersion, err := talosService.GetLocalVersion()
+	if err != nil {
+		logger.Warning(fmt.Sprintf("Failed to get local Talos version: %v", err))
+		return
+	}
+
+	if localVersion != expectedVersion {
+		logger.Warning(fmt.Sprintf("Talos version mismatch: local talosctl is %s but the node image is %s. The generated config may contain fields the node doesn't recognize.", localVersion, expectedVersion))
+	}
+}
+
+/**
+ * GetLocalVersion returns the version of the locally installed talosctl client.
+ * It executes "talosctl version --client --short" and parses the output.
+ * Returns the version string (e.g., "v1.14.1") or an error if parsing fails.
+ */
+func (talosService TalosService) GetLocalVersion() (string, error) {
+	cmd := execCommand("talosctl", "version", "--client", "--short")
+	output, err := cmd.CombinedOutput()
+	logger.Debug(string(output))
+
+	if err != nil {
+		return "", err
+	}
+
+	return parseTalosVersion(string(output))
+}
+
+/**
+ * parseTalosVersion extracts the Talos version from the command output.
+ * The expected format is "Talos vX.Y.Z".
+ * Returns the version string (e.g., "v1.14.1") or an error if parsing fails.
+ */
+func parseTalosVersion(output string) (string, error) {
+	matches := talosVersionRegex.FindStringSubmatch(output)
+	if matches == nil {
+		return "", fmt.Errorf("could not parse Talos version from output: %s", strings.TrimSpace(output))
+	}
+
+	return matches[1], nil
+}
+
+// GenerateConfig generates a fresh cluster config, pinning --talos-version so the config
+// schema matches the Talos version the node image was built for rather than whatever
+// talosctl happens to be installed locally.
+func (talosService TalosService) GenerateConfig(helperService interfaces.HelperServiceInterface, controlPlaneIp string, clusterName string, talosVersion string) error {
+	cmd := execCommand("talosctl", "gen", "config", clusterName, fmt.Sprintf("https://%s:6443", controlPlaneIp), "--talos-version", talosVersion, "--output", helperService.GetConfigDir())
 	output, err := cmd.CombinedOutput()
 	logger.Debug(string(output))
 
