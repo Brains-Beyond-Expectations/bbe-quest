@@ -939,6 +939,193 @@ func Test_ModifySchedulingOnControlPlane_Fails_IfKubeNodeConfigNotFound(t *testi
 	osReadFile = os.ReadFile
 }
 
+func Test_ModifyDnsServer_Succeeds_PreservesUnknownKeys(t *testing.T) {
+	configYaml := buildMultiDocYaml(t,
+		map[interface{}]interface{}{"version": "v1alpha1"},
+		map[interface{}]interface{}{
+			"kind": models.TalosResolverConfigKind,
+			"hostDNS": map[interface{}]interface{}{
+				"enabled": true,
+			},
+		},
+	)
+
+	mockOs := mocks.MockOs{}
+	mockOs.On("ReadFile", mock.Anything).Return(configYaml, nil)
+	mockOs.On("WriteFile", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	osReadFile = mockOs.ReadFile
+	osWriteFile = mockOs.WriteFile
+
+	helperService := mocks.MockHelperService{}
+	helperService.On("GetConfigDir").Return("test")
+
+	talosService := TalosService{}
+	err := talosService.ModifyDnsServer(&helperService, constants.ControlplaneConfigFile, "192.168.1.1")
+
+	documents := decodeWrittenDocuments(t, mockOs.Calls[1].Arguments[1].([]byte))
+	for _, document := range documents {
+		assertNoLeakedModelKeys(t, document)
+	}
+
+	assert.Nil(t, err)
+	assert.Equal(t, "v1alpha1", documents[0]["version"])
+	assert.Equal(t, "192.168.1.1", documents[1]["nameservers"].([]interface{})[0].(map[interface{}]interface{})["address"])
+	// the caching resolver settings must not be clobbered by setting nameservers
+	assert.Equal(t, true, documents[1]["hostDNS"].(map[interface{}]interface{})["enabled"])
+	mockOs.AssertNumberOfCalls(t, "WriteFile", 1)
+
+	osReadFile = os.ReadFile
+	osWriteFile = os.WriteFile
+}
+
+func Test_ModifyDnsServer_Succeeds_CreatesResolverConfigWhenMissing(t *testing.T) {
+	configYaml := buildMultiDocYaml(t, map[interface{}]interface{}{"version": "v1alpha1"})
+
+	mockOs := mocks.MockOs{}
+	mockOs.On("ReadFile", mock.Anything).Return(configYaml, nil)
+	mockOs.On("WriteFile", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	osReadFile = mockOs.ReadFile
+	osWriteFile = mockOs.WriteFile
+
+	helperService := mocks.MockHelperService{}
+	helperService.On("GetConfigDir").Return("test")
+
+	talosService := TalosService{}
+	err := talosService.ModifyDnsServer(&helperService, constants.ControlplaneConfigFile, "192.168.1.1")
+
+	documents := decodeWrittenDocuments(t, mockOs.Calls[1].Arguments[1].([]byte))
+
+	assert.Nil(t, err)
+	assert.Len(t, documents, 2)
+	assert.Equal(t, models.TalosResolverConfigKind, documents[1]["kind"])
+	assert.Equal(t, "192.168.1.1", documents[1]["nameservers"].([]interface{})[0].(map[interface{}]interface{})["address"])
+
+	osReadFile = os.ReadFile
+	osWriteFile = os.WriteFile
+}
+
+func Test_ModifyDnsServer_Fails_IfConfigNotValid(t *testing.T) {
+	mockOs := mocks.MockOs{}
+	mockOs.On("ReadFile", mock.Anything).Return([]byte("invalid yaml"), nil)
+	osReadFile = mockOs.ReadFile
+
+	helperService := mocks.MockHelperService{}
+	helperService.On("GetConfigDir").Return("test")
+
+	talosService := TalosService{}
+	err := talosService.ModifyDnsServer(&helperService, constants.ControlplaneConfigFile, "192.168.1.1")
+
+	assert.NotNil(t, err)
+	mockOs.AssertNumberOfCalls(t, "ReadFile", 1)
+
+	osReadFile = os.ReadFile
+}
+
+func Test_ModifyTimeServer_Succeeds_PreservesUnknownKeys(t *testing.T) {
+	configYaml := buildMultiDocYaml(t,
+		map[interface{}]interface{}{
+			"version": "v1alpha1",
+			"machine": map[interface{}]interface{}{
+				"type":  "controlplane",
+				"token": "secret-token",
+			},
+		},
+		map[interface{}]interface{}{"kind": models.TalosHostnameConfigKind, "auto": "stable"},
+	)
+
+	mockOs := mocks.MockOs{}
+	mockOs.On("ReadFile", mock.Anything).Return(configYaml, nil)
+	mockOs.On("WriteFile", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	osReadFile = mockOs.ReadFile
+	osWriteFile = mockOs.WriteFile
+
+	helperService := mocks.MockHelperService{}
+	helperService.On("GetConfigDir").Return("test")
+
+	talosService := TalosService{}
+	err := talosService.ModifyTimeServer(&helperService, constants.ControlplaneConfigFile, "192.168.1.1")
+
+	documents := decodeWrittenDocuments(t, mockOs.Calls[1].Arguments[1].([]byte))
+	for _, document := range documents {
+		assertNoLeakedModelKeys(t, document)
+	}
+	machine := documents[0]["machine"].(map[interface{}]interface{})
+
+	assert.Nil(t, err)
+	assert.Equal(t, "192.168.1.1", machine["time"].(map[interface{}]interface{})["servers"].([]interface{})[0])
+	// the machine's identity must survive being round-tripped through the model
+	assert.Equal(t, "secret-token", machine["token"])
+	assert.Equal(t, "controlplane", machine["type"])
+	assert.Equal(t, "v1alpha1", documents[0]["version"])
+	assert.Equal(t, "stable", documents[1]["auto"])
+	helperService.AssertNumberOfCalls(t, "GetConfigDir", 1)
+	mockOs.AssertNumberOfCalls(t, "WriteFile", 1)
+
+	osReadFile = os.ReadFile
+	osWriteFile = os.WriteFile
+}
+
+func Test_ModifyTimeServer_Fails_IfConfigNotValid(t *testing.T) {
+	mockOs := mocks.MockOs{}
+	mockOs.On("ReadFile", mock.Anything).Return([]byte("invalid yaml"), nil)
+	osReadFile = mockOs.ReadFile
+
+	helperService := mocks.MockHelperService{}
+	helperService.On("GetConfigDir").Return("test")
+
+	talosService := TalosService{}
+	err := talosService.ModifyTimeServer(&helperService, constants.ControlplaneConfigFile, "192.168.1.1")
+
+	assert.NotNil(t, err)
+	mockOs.AssertNumberOfCalls(t, "ReadFile", 1)
+
+	osReadFile = os.ReadFile
+}
+
+func Test_ModifyTimeServer_Fails_IfPrimaryDocumentMissing(t *testing.T) {
+	configYaml := buildMultiDocYaml(t,
+		map[interface{}]interface{}{"kind": models.TalosHostnameConfigKind, "auto": "stable"},
+	)
+
+	mockOs := mocks.MockOs{}
+	mockOs.On("ReadFile", mock.Anything).Return(configYaml, nil)
+	osReadFile = mockOs.ReadFile
+
+	helperService := mocks.MockHelperService{}
+	helperService.On("GetConfigDir").Return("test")
+
+	talosService := TalosService{}
+	err := talosService.ModifyTimeServer(&helperService, constants.ControlplaneConfigFile, "192.168.1.1")
+
+	assert.NotNil(t, err)
+	mockOs.AssertNumberOfCalls(t, "WriteFile", 0)
+
+	osReadFile = os.ReadFile
+}
+
+func Test_FindPrimaryDocument_ReturnsDocumentWithoutKind(t *testing.T) {
+	documents := []map[string]interface{}{
+		{"kind": models.TalosHostnameConfigKind},
+		{"version": "v1alpha1"},
+	}
+
+	document, index := findPrimaryDocument(documents)
+
+	assert.Equal(t, 1, index)
+	assert.Equal(t, "v1alpha1", document["version"])
+}
+
+func Test_FindPrimaryDocument_ReturnsNegativeIndex_WhenNotFound(t *testing.T) {
+	documents := []map[string]interface{}{
+		{"kind": models.TalosHostnameConfigKind},
+	}
+
+	document, index := findPrimaryDocument(documents)
+
+	assert.Equal(t, -1, index)
+	assert.Nil(t, document)
+}
+
 func Test_GetControlPlaneIp_Succeeds(t *testing.T) {
 	configYaml := buildMultiDocYaml(t,
 		map[interface{}]interface{}{"foo": "bar"},
