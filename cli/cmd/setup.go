@@ -226,7 +226,7 @@ func setupCommand(helperService interfaces.HelperServiceInterface, dependencySer
 				panic(err)
 			}
 
-			err = talosService.GenerateConfig(helperService, chosenIp, clusterName)
+			err = talosService.GenerateConfig(helperService, chosenIp, clusterName, nodeType.TalosVersion)
 			if err != nil {
 				return fmt.Errorf("Error while generating config: %w", err)
 			}
@@ -245,6 +245,9 @@ func setupCommand(helperService interfaces.HelperServiceInterface, dependencySer
 		return fmt.Errorf("Error while getting control plane IP: %w", err)
 	}
 	logger.Debug(fmt.Sprintf("Control plane IP: %s", controlPlaneIp))
+
+	logger.Debug("Checking if talosctl matches the version the node image was built for")
+	talosService.WarnIfTalosVersionMismatch(nodeType.TalosVersion)
 
 	nodeConfigFile := constants.WorkerConfigFile
 	if createControlPlane {

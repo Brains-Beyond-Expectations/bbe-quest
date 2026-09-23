@@ -1,8 +1,9 @@
 package models
 
 type NodeType struct {
-	OutputFile string
-	ImagerType string
-	ImageLink  string
-	Extensions []string
+	OutputFile   string
+	ImagerType   string
+	ImageLink    string
+	Extensions   []string
+	TalosVersion string
 }
