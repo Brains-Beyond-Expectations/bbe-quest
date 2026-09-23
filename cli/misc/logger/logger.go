@@ -9,7 +9,13 @@ import (
 	"strings"
 
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/constants"
+	"github.com/fatih/color"
 )
+
+var warningColor = color.New(color.FgYellow)
+var debugColor = color.New(color.FgHiBlue)
+var infoColor = color.New(color.FgGreen)
+var errorColor = color.New(color.FgRed)
 
 type plainTextHandler struct {
 	writer io.Writer
@@ -49,24 +55,24 @@ func Initialize() {
 }
 
 func Debug(msg string) {
-	slog.Debug(fmt.Sprintf("DEBUG: %s", msg))
+	slog.Debug(debugColor.Sprintf("DEBUG: %s", msg))
 }
 
 func Info(msg string) {
-	slog.Info(msg)
+	slog.Info(infoColor.Sprint(msg))
 }
 
 func Infof(msg string, args ...interface{}) {
-	slog.Info(fmt.Sprintf(msg, args...))
+	slog.Info(infoColor.Sprintf(msg, args...))
 }
 
 func Warning(msg string) {
-	slog.Warn(msg)
+	slog.Warn(warningColor.Sprint(msg))
 }
 
 func Error(msg string, err error) {
 	if err != nil {
-		slog.Debug(err.Error())
+		Debug(err.Error())
 	}
-	slog.Error(msg)
+	slog.Error(errorColor.Sprint(msg))
 }
