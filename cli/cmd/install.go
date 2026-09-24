@@ -12,6 +12,8 @@ import (
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/services/helm_service"
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/services/helper_service"
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/services/package_service"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/services/prerequisite_service"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/services/talos_service"
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/services/ui_service"
 	"github.com/spf13/cobra"
 )
@@ -27,8 +29,10 @@ var installCmd = &cobra.Command{
 		configService := config_service.ConfigService{}
 		packageService := package_service.PackageService{}
 		helmService := helm_service.HelmService{}
+		talosService := talos_service.TalosService{}
+		prerequisiteService := prerequisite_service.PrerequisiteService{}
 
-		err := installCommand(helperService, uiService, configService, packageService, helmService)
+		err := installCommand(helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService)
 		if err != nil {
 			logger.Error("", err)
 			os.Exit(1)
@@ -40,7 +44,7 @@ func init() {
 	rootCmd.AddCommand(installCmd)
 }
 
-func installCommand(helperService interfaces.HelperServiceInterface, uiService interfaces.UiServiceInterface, configService interfaces.ConfigServiceInterface, packageService interfaces.PackageServiceInterface, helmService interfaces.HelmServiceInterface) error {
+func installCommand(helperService interfaces.HelperServiceInterface, uiService interfaces.UiServiceInterface, configService interfaces.ConfigServiceInterface, packageService interfaces.PackageServiceInterface, helmService interfaces.HelmServiceInterface, talosService interfaces.TalosServiceInterface, prerequisiteService interfaces.PrerequisiteServiceInterface) error {
 	bbeConfig, err := configService.GetBbeConfig(helperService)
 	if err != nil || bbeConfig.Bbe.Cluster.Name == "" {
 		logger.Info("No BBE cluster found, please run 'bbe setup' to create your cluster")
@@ -69,7 +73,20 @@ func installCommand(helperService interfaces.HelperServiceInterface, uiService i
 		return fmt.Errorf("Failed to uninstall packages: %w", err)
 	}
 
-	err = installPackages(helperService, uiService, configService, packageService, helmService, updatedBbeConfig, packagesToInstall)
+	runner := &prerequisiteRunner{
+		helperService:       helperService,
+		uiService:           uiService,
+		packageService:      packageService,
+		helmService:         helmService,
+		talosService:        talosService,
+		prerequisiteService: prerequisiteService,
+		bbeConfig:           updatedBbeConfig,
+		allPackages:         allPackages,
+		chosen:              chosenPackages,
+		interactive:         true,
+	}
+
+	err = installPackages(helperService, uiService, configService, packageService, helmService, runner, updatedBbeConfig, packagesToInstall)
 	if err != nil {
 		return fmt.Errorf("Failed to install packages: %w", err)
 	}
@@ -135,8 +152,8 @@ func uninstallPackages(helperService interfaces.HelperServiceInterface, configSe
 	return nil
 }
 
-func installPackages(helperService interfaces.HelperServiceInterface, uiService interfaces.UiServiceInterface, configService interfaces.ConfigServiceInterface, packageService interfaces.PackageServiceInterface, helmService interfaces.HelmServiceInterface, updatedBbeConfig models.BbeConfig, installedPackages []models.ChartEntry) error {
-	for _, pkg := range installedPackages {
+func installPackages(helperService interfaces.HelperServiceInterface, uiService interfaces.UiServiceInterface, configService interfaces.ConfigServiceInterface, packageService interfaces.PackageServiceInterface, helmService interfaces.HelmServiceInterface, runner *prerequisiteRunner, updatedBbeConfig models.BbeConfig, installedPackages []models.ChartEntry) error {
+	install := func(pkg models.ChartEntry) error {
 		values, err := packageService.InstallPackage(pkg, storedValues(updatedBbeConfig.Bbe.Packages, pkg.Name), updatedBbeConfig, helmService, uiService)
 		if err != nil {
 			return fmt.Errorf("Failed to install package: %w", err)
@@ -160,13 +177,30 @@ func installPackages(helperService interfaces.HelperServiceInterface, uiService 
 		if !found {
 			updatedBbeConfig.Bbe.Packages = append(updatedBbeConfig.Bbe.Packages, *convertToPkg)
 		}
+
+		return nil
 	}
-	err := configService.UpdateBbePackages(helperService, updatedBbeConfig.Bbe.Packages)
-	if err != nil {
-		return fmt.Errorf("Failed to update BBE configuration: %w", err)
+	runner.install = install
+
+	var err error
+	for _, pkg := range installedPackages {
+		// Packages that are already installed keep running as they are
+		if !helmService.IsPackageInstalled(pkg.Name, pkg.Name, updatedBbeConfig.Bbe.Cluster.Context) {
+			if err = runner.ensure(pkg); err != nil {
+				break
+			}
+		}
+		if err = install(pkg); err != nil {
+			break
+		}
 	}
 
-	return nil
+	// Record what was installed even when a later package failed, as those packages are in the cluster now
+	if updateErr := configService.UpdateBbePackages(helperService, updatedBbeConfig.Bbe.Packages); updateErr != nil {
+		return fmt.Errorf("Failed to update BBE configuration: %w", updateErr)
+	}
+
+	return err
 }
 
 // The values a package was last installed with, so the user isn't asked for them again

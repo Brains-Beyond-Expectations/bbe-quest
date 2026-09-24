@@ -31,3 +31,9 @@ func (m *MockPackageService) UninstallPackage(pkg models.LocalPackage, bbeConfig
 	args := m.Called(pkg)
 	return args.Error(0)
 }
+
+func (m *MockPackageService) GetPrerequisites(pkg models.ChartEntry, helmService interfaces.HelmServiceInterface) ([]models.ChartPrerequisite, error) {
+	args := m.Called(pkg)
+	prerequisites, _ := args.Get(0).([]models.ChartPrerequisite)
+	return prerequisites, args.Error(1)
+}

@@ -407,6 +407,27 @@ func Test_UpgradePackage_Fails_WhenRequiredValuesAreMissingAndNotInteractive(t *
 	mockHelmService.AssertNotCalled(t, "UpgradeChart", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
 
+func Test_GetPrerequisites_Succeeds_FromTheChart(t *testing.T) {
+	prerequisites := []models.ChartPrerequisite{{Name: "storage", StorageClass: "longhorn", Package: "bbe-storage"}}
+	mockHelmService := &mocks.MockHelmService{}
+	mockHelmService.On("PullChart", "https://example.com/charts", "bbe-media", "1.0.0").Return(&models.HelmChart{Prerequisites: prerequisites}, nil)
+
+	result, err := PackageService{}.GetPrerequisites(models.ChartEntry{Name: "bbe-media", Version: "1.0.0", RepositoryUrl: "https://example.com/charts"}, mockHelmService)
+
+	assert.NoError(t, err)
+	assert.Equal(t, prerequisites, result)
+}
+
+func Test_GetPrerequisites_Fails_WhenTheChartCannotBePulled(t *testing.T) {
+	mockHelmService := &mocks.MockHelmService{}
+	mockHelmService.On("PullChart", mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New("Mock failed to pull"))
+
+	result, err := PackageService{}.GetPrerequisites(models.ChartEntry{Name: "bbe-media"}, mockHelmService)
+
+	assert.Nil(t, result)
+	assert.EqualError(t, err, "Mock failed to pull")
+}
+
 func Test_getRemoteLibrary_Succeeds_SkipsUnsupportedRevisions(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/yaml")

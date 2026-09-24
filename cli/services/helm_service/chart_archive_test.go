@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/models"
@@ -180,5 +181,54 @@ func writeChartArchive(t *testing.T, archivePath string, files map[string]string
 	for name, content := range files {
 		tarWriter.WriteHeader(&tar.Header{Name: name, Typeflag: tar.TypeReg, Mode: 0o644, Size: int64(len(content))})
 		tarWriter.Write([]byte(content))
+	}
+}
+
+func Test_readChartArchive_Succeeds_ReadingPrerequisites(t *testing.T) {
+	archive := filepath.Join(t.TempDir(), "bbe-media-1.0.0.tgz")
+	writeChartArchive(t, archive, map[string]string{
+		"bbe-media/Chart.yaml": `name: bbe-media
+annotations:
+  bbe/prerequisites: |
+    - name: storage
+      description: Longhorn
+      storageClass: longhorn
+      package: bbe-storage
+    - name: longhorn-nodes
+      talos:
+        extensions:
+          - siderolabs/util-linux-tools
+        directories:
+          - /var/mnt/longhorn
+`,
+	})
+
+	chart, err := readChartArchive(archive)
+
+	assert.NoError(t, err)
+	assert.Equal(t, []models.ChartPrerequisite{
+		{Name: "storage", Description: "Longhorn", StorageClass: "longhorn", Package: "bbe-storage"},
+		{Name: "longhorn-nodes", Talos: &models.TalosPrerequisite{Extensions: []string{"siderolabs/util-linux-tools"}, Directories: []string{"/var/mnt/longhorn"}}},
+	}, chart.Prerequisites)
+}
+
+func Test_readChartArchive_Fails_WithInvalidPrerequisites(t *testing.T) {
+	cases := map[string]string{
+		"- name: [storage":                    "Failed to parse the bbe/prerequisites annotation in bbe-media/Chart.yaml",
+		"- description: no name":              "every prerequisite needs a name",
+		"- name: storage":                     "prerequisite `storage` has nothing to check",
+		"- name: storage\n  storageClass: lh": "prerequisite `storage` needs a package that provides its storage class",
+		"- name: nodes\n  talos:\n    directories: [/var/lib/longhorn]": "prerequisite `nodes` has directory `/var/lib/longhorn`, which has to be directly under /var/mnt",
+	}
+
+	for annotation, expected := range cases {
+		archive := filepath.Join(t.TempDir(), "bbe-media-1.0.0.tgz")
+		indented := "    " + strings.ReplaceAll(annotation, "\n", "\n    ")
+		writeChartArchive(t, archive, map[string]string{"bbe-media/Chart.yaml": "name: bbe-media\nannotations:\n  bbe/prerequisites: |\n" + indented + "\n"})
+
+		chart, err := readChartArchive(archive)
+
+		assert.Nil(t, chart, annotation)
+		assert.ErrorContains(t, err, expected, annotation)
 	}
 }

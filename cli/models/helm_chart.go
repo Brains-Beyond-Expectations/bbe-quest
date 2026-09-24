@@ -2,15 +2,17 @@ package models
 
 // The parts of a packaged helm chart bbe reads to find the values it requires
 type HelmChart struct {
-	Name         string
-	Values       map[string]interface{}
-	Schema       *HelmChartSchema
-	Dependencies []HelmChartDependency
+	Name          string
+	Values        map[string]interface{}
+	Schema        *HelmChartSchema
+	Dependencies  []HelmChartDependency
+	Prerequisites []ChartPrerequisite
 }
 
 type HelmChartMetadata struct {
 	Name         string                `yaml:"name"`
 	Dependencies []HelmChartDependency `yaml:"dependencies"`
+	Annotations  map[string]string     `yaml:"annotations"`
 }
 
 type HelmChartDependency struct {

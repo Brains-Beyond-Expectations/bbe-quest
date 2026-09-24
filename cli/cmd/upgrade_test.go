@@ -11,11 +11,11 @@ import (
 )
 
 func Test_upgradeCommand_Succeeds_WithNothingToDo(t *testing.T) {
-	helperService, uiService, configService, packageService, helmService := initUpgradeCommand()
+	helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService := initUpgradeCommand()
 
 	mockSuccessfulUpgradeFlow(helperService, uiService, configService, packageService)
 
-	err := upgradeCommand(helperService, uiService, configService, packageService, helmService, false)
+	err := upgradeCommand(helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService, false)
 
 	assert.Nil(t, err)
 	configService.AssertNumberOfCalls(t, "GetBbeConfig", 1)
@@ -31,7 +31,7 @@ func Test_upgradeCommand_Succeeds_WithNothingToDo(t *testing.T) {
 }
 
 func Test_upgradeCommand_Fails_With_No_Cluster_name(t *testing.T) {
-	helperService, uiService, configService, packageService, helmService := initUpgradeCommand()
+	helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService := initUpgradeCommand()
 
 	bbeConfig := &models.BbeConfig{}
 	bbeConfig.Bbe.Cluster.Name = ""
@@ -47,14 +47,14 @@ func Test_upgradeCommand_Fails_With_No_Cluster_name(t *testing.T) {
 	}
 	configService.On("GetBbeConfig", mock.Anything).Return(bbeConfig, nil)
 
-	err := upgradeCommand(helperService, uiService, configService, packageService, helmService, true)
+	err := upgradeCommand(helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService, true)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "No BBE cluster found, please run 'bbe setup' to create your cluster")
 }
 
 func Test_upgradeCommand_Fails_With_Error_Getting_BBE_Config(t *testing.T) {
-	helperService, uiService, configService, packageService, helmService := initUpgradeCommand()
+	helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService := initUpgradeCommand()
 
 	bbeConfig := &models.BbeConfig{}
 	bbeConfig.Bbe.Cluster.Name = ""
@@ -72,14 +72,14 @@ func Test_upgradeCommand_Fails_With_Error_Getting_BBE_Config(t *testing.T) {
 	fakeError := errors.New("Fake GetBbeConfig error")
 	configService.On("GetBbeConfig", mock.Anything).Return(bbeConfig, fakeError)
 
-	err := upgradeCommand(helperService, uiService, configService, packageService, helmService, true)
+	err := upgradeCommand(helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService, true)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "No BBE cluster found, please run 'bbe setup' to create your cluster")
 }
 
 func Test_upgradeCommand_Fails_WhenCreateSelect(t *testing.T) {
-	helperService, uiService, configService, packageService, helmService := initUpgradeCommand()
+	helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService := initUpgradeCommand()
 
 	fakeError := errors.New("Fake select error")
 	uiService.On("CreateSelect", mock.Anything, mock.Anything).Return("Yes", fakeError).Once()
@@ -100,7 +100,7 @@ func Test_upgradeCommand_Fails_WhenCreateSelect(t *testing.T) {
 
 	mockSuccessfulUpgradeFlow(helperService, uiService, configService, packageService)
 
-	err := upgradeCommand(helperService, uiService, configService, packageService, helmService, false)
+	err := upgradeCommand(helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService, false)
 
 	assert.Error(t, err)
 	configService.AssertNumberOfCalls(t, "GetBbeConfig", 1)
@@ -111,7 +111,7 @@ func Test_upgradeCommand_Fails_WhenCreateSelect(t *testing.T) {
 }
 
 func Test_upgradeCommand_Succeeds_WithInteractiveUpgrade(t *testing.T) {
-	helperService, uiService, configService, packageService, helmService := initUpgradeCommand()
+	helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService := initUpgradeCommand()
 
 	uiService.On("CreateSelect", mock.Anything, mock.Anything).Return("Yes", nil).Once()
 	uiService.On("CreateSelect", mock.Anything, mock.Anything).Return("No", nil).Once()
@@ -131,7 +131,7 @@ func Test_upgradeCommand_Succeeds_WithInteractiveUpgrade(t *testing.T) {
 
 	mockSuccessfulUpgradeFlow(helperService, uiService, configService, packageService)
 
-	err := upgradeCommand(helperService, uiService, configService, packageService, helmService, false)
+	err := upgradeCommand(helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService, false)
 
 	assert.Nil(t, err)
 	configService.AssertNumberOfCalls(t, "GetBbeConfig", 1)
@@ -151,7 +151,7 @@ func Test_upgradeCommand_Succeeds_WithInteractiveUpgrade(t *testing.T) {
 }
 
 func Test_upgradeCommand_Succeeds_WithNonInteractiveUpgrade(t *testing.T) {
-	helperService, uiService, configService, packageService, helmService := initUpgradeCommand()
+	helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService := initUpgradeCommand()
 
 	bbeConfig := &models.BbeConfig{}
 	bbeConfig.Bbe.Cluster.Name = "test"
@@ -169,7 +169,7 @@ func Test_upgradeCommand_Succeeds_WithNonInteractiveUpgrade(t *testing.T) {
 
 	mockSuccessfulUpgradeFlow(helperService, uiService, configService, packageService)
 
-	err := upgradeCommand(helperService, uiService, configService, packageService, helmService, true)
+	err := upgradeCommand(helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService, true)
 
 	assert.Nil(t, err)
 	configService.AssertNumberOfCalls(t, "GetBbeConfig", 1)
@@ -189,7 +189,7 @@ func Test_upgradeCommand_Succeeds_WithNonInteractiveUpgrade(t *testing.T) {
 }
 
 func Test_upgradeCommand_Fails_Prtial_UpdatesBbeConfig(t *testing.T) {
-	helperService, uiService, configService, packageService, helmService := initUpgradeCommand()
+	helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService := initUpgradeCommand()
 
 	bbeConfig := &models.BbeConfig{}
 	bbeConfig.Bbe.Cluster.Name = "test"
@@ -210,7 +210,7 @@ func Test_upgradeCommand_Fails_Prtial_UpdatesBbeConfig(t *testing.T) {
 
 	mockSuccessfulUpgradeFlow(helperService, uiService, configService, packageService)
 
-	err := upgradeCommand(helperService, uiService, configService, packageService, helmService, true)
+	err := upgradeCommand(helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService, true)
 
 	assert.NotNil(t, err)
 	configService.AssertNumberOfCalls(t, "GetBbeConfig", 1)
@@ -230,7 +230,7 @@ func Test_upgradeCommand_Fails_Prtial_UpdatesBbeConfig(t *testing.T) {
 }
 
 func Test_upgradeCommand_Succeeds_StoringPackageValues(t *testing.T) {
-	helperService, uiService, configService, packageService, helmService := initUpgradeCommand()
+	helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService := initUpgradeCommand()
 
 	storedValues := map[string]interface{}{"service": map[string]interface{}{"ip": "192.168.1.240"}}
 	upgradedValues := map[string]interface{}{"service": map[string]interface{}{"ip": "192.168.1.240"}, "password": "entered"}
@@ -249,7 +249,7 @@ func Test_upgradeCommand_Succeeds_StoringPackageValues(t *testing.T) {
 
 	mockSuccessfulUpgradeFlow(helperService, uiService, configService, packageService)
 
-	err := upgradeCommand(helperService, uiService, configService, packageService, helmService, false)
+	err := upgradeCommand(helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService, false)
 
 	assert.Nil(t, err)
 	packageService.AssertNumberOfCalls(t, "UpgradePackage", 1)
@@ -263,7 +263,7 @@ func Test_upgradeCommand_Succeeds_StoringPackageValues(t *testing.T) {
 }
 
 func Test_upgradeCommand_Succeeds_WithoutPromptsWhenNonInteractive(t *testing.T) {
-	helperService, uiService, configService, packageService, helmService := initUpgradeCommand()
+	helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService := initUpgradeCommand()
 
 	bbeConfig := &models.BbeConfig{}
 	bbeConfig.Bbe.Cluster.Name = "test"
@@ -277,20 +277,14 @@ func Test_upgradeCommand_Succeeds_WithoutPromptsWhenNonInteractive(t *testing.T)
 
 	mockSuccessfulUpgradeFlow(helperService, uiService, configService, packageService)
 
-	err := upgradeCommand(helperService, uiService, configService, packageService, helmService, true)
+	err := upgradeCommand(helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService, true)
 
 	assert.Nil(t, err)
 	packageService.AssertCalled(t, "UpgradePackage", models.ChartEntry{Name: "package_one", Version: "2.0.0"}, map[string]interface{}(nil), false)
 }
 
-func initUpgradeCommand() (*mocks.MockHelperService, *mocks.MockUiService, *mocks.MockConfigService, *mocks.MockPackageService, *mocks.MockHelmService) {
-	helperService := &mocks.MockHelperService{}
-	uiService := &mocks.MockUiService{}
-	configService := &mocks.MockConfigService{}
-	packageService := &mocks.MockPackageService{}
-	helmService := &mocks.MockHelmService{}
-
-	return helperService, uiService, configService, packageService, helmService
+func initUpgradeCommand() (*mocks.MockHelperService, *mocks.MockUiService, *mocks.MockConfigService, *mocks.MockPackageService, *mocks.MockHelmService, *mocks.MockTalosService, *mocks.MockPrerequisiteService) {
+	return newInstallMocks()
 }
 
 func mockSuccessfulUpgradeFlow(_ *mocks.MockHelperService, uiService *mocks.MockUiService, configService *mocks.MockConfigService, packageService *mocks.MockPackageService) {
@@ -316,4 +310,5 @@ func mockSuccessfulUpgradeFlow(_ *mocks.MockHelperService, uiService *mocks.Mock
 		},
 	}, nil)
 	packageService.On("UpgradePackage", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
+	packageService.On("GetPrerequisites", mock.Anything).Return(nil, nil)
 }
