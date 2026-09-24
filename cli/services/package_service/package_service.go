@@ -95,7 +95,12 @@ func (packageService PackageService) InstallPackage(chart models.ChartEntry, val
 		return values, nil
 	}
 
-	values, err := resolveValues(chart, values, helmService, uiService, true)
+	helmChart, err := helmService.PullChart(chart.RepositoryUrl, chart.Name, chart.Version)
+	if err != nil {
+		return nil, err
+	}
+
+	values, err = resolveValues(chart, helmChart, values, uiService, true)
 	if err != nil {
 		return nil, err
 	}
@@ -106,6 +111,10 @@ func (packageService PackageService) InstallPackage(chart models.ChartEntry, val
 
 	if response != nil {
 		return nil, response
+	}
+
+	if err := prepareNamespace(chart, helmChart, bbeConfig, helmService); err != nil {
+		return nil, err
 	}
 
 	err = helmService.InstallChart(chart.Name, chart.Name, chart.RepositoryName, chart.Version, chart.Name, bbeConfig.Bbe.Cluster.Context, values)
@@ -123,7 +132,12 @@ func (packageService PackageService) UpgradePackage(chart models.ChartEntry, val
 		return nil, fmt.Errorf("Package `%s` not installed", chart.Name)
 	}
 
-	values, err := resolveValues(chart, values, helmService, uiService, interactive)
+	helmChart, err := helmService.PullChart(chart.RepositoryUrl, chart.Name, chart.Version)
+	if err != nil {
+		return nil, err
+	}
+
+	values, err = resolveValues(chart, helmChart, values, uiService, interactive)
 	if err != nil {
 		return nil, err
 	}
@@ -134,12 +148,26 @@ func (packageService PackageService) UpgradePackage(chart models.ChartEntry, val
 		return nil, response
 	}
 
+	// Also for packages installed before their chart asked for a pod security level
+	if err := prepareNamespace(chart, helmChart, bbeConfig, helmService); err != nil {
+		return nil, err
+	}
+
 	err = helmService.UpgradeChart(chart.Name, chart.Name, chart.RepositoryName, chart.Version, chart.Name, bbeConfig.Bbe.Cluster.Context, values)
 	if err != nil {
 		return nil, err
 	}
 
 	return values, nil
+}
+
+// Charts whose pods need more than the cluster allows by default say so in their Chart.yaml
+func prepareNamespace(chart models.ChartEntry, helmChart *models.HelmChart, bbeConfig models.BbeConfig, helmService interfaces.HelmServiceInterface) error {
+	if helmChart.PodSecurity == "" {
+		return nil
+	}
+
+	return helmService.PrepareNamespace(chart.Name, bbeConfig.Bbe.Cluster.Context, helmChart.PodSecurity)
 }
 
 // Returns what the chart needs in the cluster before it can be installed, from its Chart.yaml

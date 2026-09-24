@@ -9,4 +9,5 @@ type HelmServiceInterface interface {
 	UninstallChart(pkgName string, namespace string, context string) error
 	IsPackageInstalled(pkgName string, namespace string, context string) bool
 	PullChart(repositoryUrl string, chartName string, version string) (*models.HelmChart, error)
+	PrepareNamespace(namespace string, context string, podSecurity string) error
 }

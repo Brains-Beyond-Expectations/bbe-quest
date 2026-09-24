@@ -332,3 +332,95 @@ func Test_Helm_Service_Succeeds_Install_And_Upgrade_Chart_With_Notes(t *testing.
 	assert.NoError(t, installErr)
 	assert.NoError(t, upgradeErr)
 }
+
+func Test_Helm_Service_Install_Chart_Replaces_A_Failed_Release(t *testing.T) {
+	var receivedArgs []string
+	execCommand = func(_ string, args ...string) *exec.Cmd {
+		receivedArgs = args
+		return exec.Command("true")
+	}
+
+	err := HelmService{}.InstallChart("packageName", "chartName", "repoName", "version", "namespace", "context", nil)
+
+	assert.NoError(t, err)
+	assert.Contains(t, receivedArgs, "--replace")
+}
+
+func Test_Helm_Service_IsPackageInstalled_Depends_On_The_Release(t *testing.T) {
+	cases := map[string]bool{
+		`{"version":1,"info":{"status":"deployed"}}`: true,
+		`{"version":1,"info":{"status":"failed"}}`:   false,
+		`{"version":2,"info":{"status":"failed"}}`:   true,
+	}
+
+	for status, expected := range cases {
+		execCommand = func(_ string, _ ...string) *exec.Cmd {
+			return exec.Command("printf", "%s", status)
+		}
+
+		assert.Equal(t, expected, HelmService{}.IsPackageInstalled("packageName", "namespace", "context"), status)
+	}
+}
+
+func Test_Helm_Service_Succeeds_Prepare_Namespace(t *testing.T) {
+	var commands [][]string
+	execCommand = func(name string, args ...string) *exec.Cmd {
+		commands = append(commands, append([]string{name}, args...))
+		return exec.Command("true")
+	}
+
+	err := HelmService{}.PrepareNamespace("bbe-networking", "context", "privileged")
+
+	assert.NoError(t, err)
+	assert.Equal(t, [][]string{
+		{"kubectl", "create", "namespace", "bbe-networking", "--context", "context"},
+		{"kubectl", "label", "namespace", "bbe-networking", "--overwrite",
+			"pod-security.kubernetes.io/enforce=privileged",
+			"pod-security.kubernetes.io/audit=privileged",
+			"pod-security.kubernetes.io/warn=privileged",
+			"--context", "context"},
+	}, commands)
+}
+
+func Test_Helm_Service_Succeeds_Prepare_Namespace_That_Exists(t *testing.T) {
+	execCommand = func(_ string, args ...string) *exec.Cmd {
+		if args[0] == "create" {
+			return exec.Command("sh", "-c", `echo 'Error from server (AlreadyExists): namespaces "bbe-networking" already exists'; exit 1`)
+		}
+		return exec.Command("true")
+	}
+
+	err := HelmService{}.PrepareNamespace("bbe-networking", "context", "privileged")
+
+	assert.NoError(t, err)
+}
+
+func Test_Helm_Service_Fails_Prepare_Namespace(t *testing.T) {
+	cases := map[string]string{
+		"create": "Failed to create namespace `bbe-networking`: exit status 1\nError from server (Forbidden)",
+		"label":  "Failed to set the pod security level of namespace `bbe-networking`: exit status 1\nError from server (Forbidden)",
+	}
+
+	for failing, expected := range cases {
+		execCommand = func(_ string, args ...string) *exec.Cmd {
+			if args[0] == failing {
+				return exec.Command("sh", "-c", `echo 'Error from server (Forbidden)'; exit 1`)
+			}
+			return exec.Command("true")
+		}
+
+		err := HelmService{}.PrepareNamespace("bbe-networking", "context", "privileged")
+
+		assert.EqualError(t, err, expected, failing)
+	}
+}
+
+func Test_Helm_Service_Fails_Prepare_Namespace_Without_Kubectl(t *testing.T) {
+	execCommand = func(_ string, _ ...string) *exec.Cmd {
+		return exec.Command("bbe-missing-kubectl")
+	}
+
+	err := HelmService{}.PrepareNamespace("bbe-networking", "context", "privileged")
+
+	assert.EqualError(t, err, "Failed to create namespace `bbe-networking`: kubectl is needed to prepare the namespace for this package, please install it")
+}
