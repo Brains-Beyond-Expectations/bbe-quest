@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -399,6 +400,39 @@ func (talosService TalosService) ModifyTimeServer(helperService interfaces.Helpe
 
 	if err := setDocument(documents, index, machineConfig); err != nil {
 		return err
+	}
+
+	return writeDocuments(configDir, configFile, documents)
+}
+
+// Adds directory user volumes, which Talos creates at /var/mnt/<name> and pods can store data in, keeping any
+// already there
+func (talosService TalosService) ModifyUserVolumes(helperService interfaces.HelperServiceInterface, configFile string, names []string) error {
+	configDir := helperService.GetConfigDir()
+
+	documents, err := getParsedDocuments(configDir, configFile)
+	if err != nil {
+		return err
+	}
+
+	for _, name := range names {
+		exists := slices.ContainsFunc(documents, func(document map[string]interface{}) bool {
+			return document["kind"] == models.TalosUserVolumeConfigKind && document["name"] == name
+		})
+		if exists {
+			continue
+		}
+
+		documents = append(documents, map[string]interface{}{})
+		volume := models.TalosUserVolumeConfig{
+			ApiVersion: models.TalosConfigApiVersion,
+			Kind:       models.TalosUserVolumeConfigKind,
+			Name:       name,
+			VolumeType: "directory",
+		}
+		if err := setDocument(documents, len(documents)-1, volume); err != nil {
+			return err
+		}
 	}
 
 	return writeDocuments(configDir, configFile, documents)

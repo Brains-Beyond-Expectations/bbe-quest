@@ -743,6 +743,7 @@ func mockSuccessfulSetupFlow(helperService *mocks.MockHelperService, dependencyS
 	talosService.On("ModifyNetworkHostname", helperService, nodeTypeConfigFile, "talos-node").Return(nil)
 	talosService.On("ModifyTimeServer", helperService, nodeTypeConfigFile, gatewayIp).Return(nil)
 	talosService.On("ModifyDnsServer", helperService, nodeTypeConfigFile, gatewayIp).Return(nil)
+	talosService.On("ModifyUserVolumes", helperService, nodeTypeConfigFile, []string{"longhorn"}).Return(nil)
 	talosService.On("ModifySchedulingOnControlPlane", helperService, true).Return(nil)
 	talosService.On("ModifyConfigDisk", helperService, nodeTypeConfigFile, "/dev/sda").Return(nil)
 	talosService.On("WarnIfTalosVersionMismatch", mock.Anything).Return()

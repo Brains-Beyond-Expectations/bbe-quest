@@ -109,3 +109,8 @@ func (m *MockTalosService) DownloadKubeConfig(helperService interfaces.HelperSer
 func (m *MockTalosService) WarnIfTalosVersionMismatch(expectedVersion string) {
 	m.Called(expectedVersion)
 }
+
+func (m *MockTalosService) ModifyUserVolumes(helperService interfaces.HelperServiceInterface, configFile string, names []string) error {
+	args := m.Called(helperService, configFile, names)
+	return args.Error(0)
+}
