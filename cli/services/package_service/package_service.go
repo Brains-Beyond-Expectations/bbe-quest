@@ -4,12 +4,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/constants"
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/interfaces"
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/misc/logger"
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/models"
+	"golang.org/x/mod/semver"
 	"gopkg.in/yaml.v3"
 )
 
@@ -43,12 +45,37 @@ func getRemoteLibrary() (*models.LibraryEntry, error) {
 	}
 
 	for _, revision := range library.Library {
-		if revision.MinBbeCli <= constants.Version {
+		if isRevisionSupported(revision.MinBbeCli, constants.Version) {
 			return &revision, nil
 		}
 	}
 
-	return nil, fmt.Errorf("No revision found for current bbe-cli version")
+	return nil, fmt.Errorf("No revision found for bbe-cli version %s", constants.Version)
+}
+
+// Development builds support every revision, as do revisions without a minimum version
+func isRevisionSupported(minBbeCli string, cliVersion string) bool {
+	if cliVersion == "development" || minBbeCli == "" {
+		return true
+	}
+
+	minVersion := toSemver(minBbeCli)
+	currentVersion := toSemver(cliVersion)
+	if !semver.IsValid(minVersion) || !semver.IsValid(currentVersion) {
+		logger.Debug(fmt.Sprintf("Skipping revision, cannot compare min-bbe-cli `%s` with bbe-cli version `%s`", minBbeCli, cliVersion))
+		return false
+	}
+
+	return semver.Compare(minVersion, currentVersion) <= 0
+}
+
+// semver expects a leading `v`, which library.yaml versions don't have
+func toSemver(version string) string {
+	if strings.HasPrefix(version, "v") {
+		return version
+	}
+
+	return "v" + version
 }
 
 func (packageService PackageService) GetAll() ([]models.ChartEntry, error) {
