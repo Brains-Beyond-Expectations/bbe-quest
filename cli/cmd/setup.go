@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -18,9 +19,12 @@ import (
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/services/talos_service"
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/services/ui_service"
 	"github.com/briandowns/spinner"
+	"github.com/fatih/color"
 	"github.com/lucasepe/codename"
 	"github.com/spf13/cobra"
 )
+
+var italic = color.New(color.Italic).SprintFunc()
 
 var setupCmd = &cobra.Command{
 	Use:     "setup",
@@ -83,23 +87,23 @@ func setupCommand(helperService interfaces.HelperServiceInterface, dependencySer
 	configExists := configService.CheckForTalosConfigs(helperService)
 
 	if createControlPlane && configExists {
-		return fmt.Errorf("You are trying to create a control plane node, but there are already config files present.")
+		return fmt.Errorf("You are trying to create a control plane node, but there are already config files present, in %s", helperService.GetConfigDir())
 	}
 
 	if !configExists && !createControlPlane {
 		return fmt.Errorf("No config files found while trying to enroll new node in existing cluster, please create your first node first")
 	}
 
-	answer, err = uiService.CreateSelect("What type of device are you setting up?", []string{"Intel NUC", "Raspberry Pi 4 (or older)"})
+	answer, err = uiService.CreateSelect("What type of device are you setting up?", []string{"Bare Metal", "Single Board Computer"})
 	if err != nil {
 		panic(err)
 	}
 
 	var nodeType models.NodeType
 	switch answer {
-	case "Intel NUC":
+	case "Bare Metal":
 		nodeType = image_service.IntelNuc
-	case "Raspberry Pi 4 (or older)":
+	case "Single Board Computer":
 		nodeType = image_service.RaspberryPi
 	default:
 		panic("Invalid node type")
@@ -167,24 +171,43 @@ func setupCommand(helperService interfaces.HelperServiceInterface, dependencySer
 	originalIp := ips[0]
 
 	///////////////////////////////////////////////////////////////////////////////// QUESTIONS ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	chosenIp, err := uiService.CreateInput("Please choose an ip for the new node", originalIp)
+	chosenIp, err := uiService.CreateInput(fmt.Sprintf("Please choose an ip for the new node %s", italic("(press enter to accept the suggested ip)")), originalIp)
 	if err != nil {
 		panic(err)
 	}
 
 	logger.Debug("Getting talos disks")
-	disks, err := talosService.GetDisks(helperService, originalIp)
+	disks, err := talosService.GetDisks(originalIp)
 	if err != nil {
 		return fmt.Errorf("Error while getting disks: %w", err)
 	}
 
-	disk, err := uiService.CreateSelect(fmt.Sprintf("Please select the disk to install Talos on for %s", chosenIp), disks)
+	if len(disks) == 0 {
+		return fmt.Errorf("No disk Talos could be installed to was found on %s", originalIp)
+	}
+
+	diskLabels := make([]string, len(disks))
+	for i, disk := range disks {
+		diskLabels[i] = diskLabel(disk)
+	}
+
+	selectedDisk, err := uiService.CreateSelect(fmt.Sprintf("Please select the disk to install Talos on for %s", chosenIp), diskLabels)
 	if err != nil {
 		panic(err)
 	}
-	diskSelectionResult := strings.Fields(disk)
+	installDisk := disks[slices.Index(diskLabels, selectedDisk)].Spec.DevPath
 
-	gatewayIp, err := uiService.CreateInput("Please choose the correct gateway ip", gatewayIpSuggestion)
+	gatewayIp, err := uiService.CreateInput(fmt.Sprintf("Please choose the correct gateway ip %s", italic("(press enter to accept the suggested gateway ip)")), gatewayIpSuggestion)
+	if err != nil {
+		panic(err)
+	}
+
+	timeServer, err := uiService.CreateInput(fmt.Sprintf("Please choose the time server %s", italic("(press enter to accept the suggested time server)")), gatewayIp)
+	if err != nil {
+		panic(err)
+	}
+
+	dnsServer, err := uiService.CreateInput(fmt.Sprintf("Please choose the DNS server %s", italic("(press enter to accept the suggested dns server)")), gatewayIp)
 	if err != nil {
 		panic(err)
 	}
@@ -194,7 +217,7 @@ func setupCommand(helperService interfaces.HelperServiceInterface, dependencySer
 		suggestedHostname = codename.Generate(rng, 0)
 	}
 
-	hostname, err := uiService.CreateInput("Please select the hostname", suggestedHostname)
+	hostname, err := uiService.CreateInput(fmt.Sprintf("Please select the hostname %s", italic("(press enter to accept the suggested name)")), suggestedHostname)
 	if err != nil {
 		panic(err)
 	}
@@ -213,7 +236,7 @@ func setupCommand(helperService interfaces.HelperServiceInterface, dependencySer
 				panic(err)
 			}
 
-			err = talosService.GenerateConfig(helperService, chosenIp, clusterName)
+			err = talosService.GenerateConfig(helperService, chosenIp, clusterName, nodeType.TalosVersion)
 			if err != nil {
 				return fmt.Errorf("Error while generating config: %w", err)
 			}
@@ -232,6 +255,9 @@ func setupCommand(helperService interfaces.HelperServiceInterface, dependencySer
 		return fmt.Errorf("Error while getting control plane IP: %w", err)
 	}
 	logger.Debug(fmt.Sprintf("Control plane IP: %s", controlPlaneIp))
+
+	logger.Debug("Checking if talosctl matches the version the node image was built for")
+	talosService.WarnIfTalosVersionMismatch(nodeType.TalosVersion)
 
 	nodeConfigFile := constants.WorkerConfigFile
 	if createControlPlane {
@@ -265,6 +291,16 @@ func setupCommand(helperService interfaces.HelperServiceInterface, dependencySer
 		return fmt.Errorf("Error while storing the hostname in file: %w", err)
 	}
 
+	err = talosService.ModifyTimeServer(helperService, nodeConfigFile, timeServer)
+	if err != nil {
+		return fmt.Errorf("Error while storing the time server in file: %w", err)
+	}
+
+	err = talosService.ModifyDnsServer(helperService, nodeConfigFile, dnsServer)
+	if err != nil {
+		return fmt.Errorf("Error while storing the DNS server in file: %w", err)
+	}
+
 	if allowSchedulingOnControlPlanes != "" {
 		scheduleOnControlPlane := allowSchedulingOnControlPlanes == "Yes"
 		err = talosService.ModifySchedulingOnControlPlane(helperService, scheduleOnControlPlane)
@@ -275,7 +311,7 @@ func setupCommand(helperService interfaces.HelperServiceInterface, dependencySer
 
 	spinner.Start()
 	logger.Debug("Modifying talos config disk")
-	err = talosService.ModifyConfigDisk(helperService, nodeConfigFile, fmt.Sprintf("/dev/%s", diskSelectionResult[2]))
+	err = talosService.ModifyConfigDisk(helperService, nodeConfigFile, installDisk)
 	if err != nil {
 		return fmt.Errorf("Error while modifying config disk: %w", err)
 	}
@@ -322,6 +358,21 @@ func setupCommand(helperService interfaces.HelperServiceInterface, dependencySer
 	return nil
 }
 
+// diskLabel describes a disk for the install prompt. The transport is included because the
+// installer's own boot media - usually a USB stick - is listed alongside the real disks, and
+// installing to it would overwrite the installer.
+func diskLabel(disk models.TalosDisk) string {
+	details := []string{disk.Spec.PrettySize}
+	if disk.Spec.Model != "" {
+		details = append(details, disk.Spec.Model)
+	}
+	if disk.Spec.Transport != "" {
+		details = append(details, fmt.Sprintf("(%s)", disk.Spec.Transport))
+	}
+
+	return fmt.Sprintf("%s - %s", disk.Spec.DevPath, strings.Join(details, " "))
+}
+
 func imageCreation(helperService interfaces.HelperServiceInterface, uiService interfaces.UiServiceInterface, imageService interfaces.ImageServiceInterface, workingDirectory string, nodeType models.NodeType) error {
 	imageDirectory := fmt.Sprintf("%s/_out", workingDirectory)
 	resultFilePath := fmt.Sprintf("%s/%s", imageDirectory, nodeType.OutputFile)
@@ -329,7 +380,7 @@ func imageCreation(helperService interfaces.HelperServiceInterface, uiService in
 
 	_, imageExists := helperService.CheckIfFileExists(resultFilePath)
 	if imageExists {
-		result, err := uiService.CreateSelect("An image already exists, would you like to redownload it?", []string{"Yes", "No"})
+		result, err := uiService.CreateSelect(fmt.Sprintf("An image already exists in (%s) would you like to redownload it?", italic(resultFilePath)), []string{"Yes", "No"})
 		if err != nil {
 			panic(err)
 		}
