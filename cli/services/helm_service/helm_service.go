@@ -2,6 +2,8 @@ package helm_service
 
 import (
 	"bytes"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -38,10 +40,12 @@ func (HelmService HelmService) AddRepo(repoName string, repoUrl string) error {
 }
 
 func (HelmService HelmService) InstallChart(pkgName string, chartName string, repoName string, version string, namespace string, context string, values map[string]interface{}) error {
+	// --replace installs over a release whose last install failed, which helm otherwise keeps the name for
 	cmd, err := helmCommandWithValues(values, "install", pkgName, fmt.Sprintf("%s/%s", repoName, chartName),
 		"--version", version,
 		"--namespace", namespace,
 		"--create-namespace",
+		"--replace",
 		"--kube-context", context)
 	if err != nil {
 		return fmt.Errorf("Failed to install helm package `%s`: %w", pkgName, err)
@@ -122,16 +126,73 @@ func (HelmService HelmService) UninstallChart(pkgName string, namespace string, 
 	return nil
 }
 
+// A release whose first install failed doesn't count, as nothing in it can be relied on. One whose upgrade failed still runs the version before
 func (HelmService HelmService) IsPackageInstalled(pkgName string, namespace string, context string) bool {
 	cmd := execCommand("helm", "status", pkgName,
 		"--namespace", namespace,
 		"--kube-context", context,
+		"--output", "json",
 	)
-	if err := cmd.Run(); err != nil {
+	response, err := cmd.Output()
+	if err != nil {
+		return false
+	}
+
+	var release struct {
+		Version int `json:"version"`
+		Info    struct {
+			Status string `json:"status"`
+		} `json:"info"`
+	}
+	if err := json.Unmarshal(response, &release); err != nil {
+		return true
+	}
+
+	if release.Version == 1 && release.Info.Status == "failed" {
+		logger.Debug(fmt.Sprintf("Package `%s` failed to install before, so it counts as not installed", pkgName))
 		return false
 	}
 
 	return true
+}
+
+// The labels the pod security admission reads, see https://kubernetes.io/docs/concepts/security/pod-security-admission
+var podSecurityModes = []string{"enforce", "audit", "warn"}
+
+// Creates the namespace with the pod security level a chart needs, as helm's --create-namespace can't label it
+func (HelmService HelmService) PrepareNamespace(namespace string, context string, podSecurity string) error {
+	logger.Debug(fmt.Sprintf("Setting the pod security level of namespace `%s` to `%s`", namespace, podSecurity))
+
+	response, err := kubectl(context, "create", "namespace", namespace)
+	if err != nil && !strings.Contains(string(response), "AlreadyExists") {
+		return fmt.Errorf("Failed to create namespace `%s`: %w", namespace, err)
+	}
+
+	args := []string{"label", "namespace", namespace, "--overwrite"}
+	for _, mode := range podSecurityModes {
+		args = append(args, fmt.Sprintf("pod-security.kubernetes.io/%s=%s", mode, podSecurity))
+	}
+	if _, err := kubectl(context, args...); err != nil {
+		return fmt.Errorf("Failed to set the pod security level of namespace `%s`: %w", namespace, err)
+	}
+
+	return nil
+}
+
+func kubectl(context string, args ...string) ([]byte, error) {
+	cmd := execCommand("kubectl", append(args, "--context", context)...)
+	logger.Debug(fmt.Sprintf("Command: %s", cmd.String()))
+
+	response, err := cmd.CombinedOutput()
+	logger.Debug(fmt.Sprintf("Response: %s", string(response)))
+	if errors.Is(err, exec.ErrNotFound) {
+		return response, errors.New("kubectl is needed to prepare the namespace for this package, please install it")
+	}
+	if err != nil {
+		return response, fmt.Errorf("%w%s", err, helmOutput(response))
+	}
+
+	return response, nil
 }
 
 func (HelmService HelmService) updateRepo(repoName string) error {

@@ -232,3 +232,23 @@ func Test_readChartArchive_Fails_WithInvalidPrerequisites(t *testing.T) {
 		assert.ErrorContains(t, err, expected, annotation)
 	}
 }
+
+func Test_readChartArchive_Succeeds_ReadingThePodSecurityLevel(t *testing.T) {
+	archive := filepath.Join(t.TempDir(), "bbe-networking-1.0.0.tgz")
+	writeChartArchive(t, archive, map[string]string{"bbe-networking/Chart.yaml": "name: bbe-networking\nannotations:\n  bbe/pod-security: privileged\n"})
+
+	chart, err := readChartArchive(archive)
+
+	assert.NoError(t, err)
+	assert.Equal(t, "privileged", chart.PodSecurity)
+}
+
+func Test_readChartArchive_Fails_WithAnUnknownPodSecurityLevel(t *testing.T) {
+	archive := filepath.Join(t.TempDir(), "bbe-networking-1.0.0.tgz")
+	writeChartArchive(t, archive, map[string]string{"bbe-networking/Chart.yaml": "name: bbe-networking\nannotations:\n  bbe/pod-security: host\n"})
+
+	chart, err := readChartArchive(archive)
+
+	assert.Nil(t, chart)
+	assert.EqualError(t, err, "The bbe/pod-security annotation in bbe-networking/Chart.yaml is `host`, but has to be one of privileged, baseline, restricted")
+}

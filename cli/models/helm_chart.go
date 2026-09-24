@@ -7,6 +7,7 @@ type HelmChart struct {
 	Schema        *HelmChartSchema
 	Dependencies  []HelmChartDependency
 	Prerequisites []ChartPrerequisite
+	PodSecurity   string // A pod security standard level, empty to keep the cluster's default
 }
 
 type HelmChartMetadata struct {

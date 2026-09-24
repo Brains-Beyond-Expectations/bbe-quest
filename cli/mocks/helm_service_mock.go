@@ -44,3 +44,8 @@ func (m *MockHelmService) PullChart(repositoryUrl string, chartName string, vers
 	chart, _ := args.Get(0).(*models.HelmChart)
 	return chart, args.Error(1)
 }
+
+func (m *MockHelmService) PrepareNamespace(namespace string, context string, podSecurity string) error {
+	args := m.Called(namespace, context, podSecurity)
+	return args.Error(0)
+}
