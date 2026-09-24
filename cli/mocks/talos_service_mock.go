@@ -4,6 +4,7 @@ import (
 	"os/exec"
 
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/interfaces"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/models"
 	"github.com/stretchr/testify/mock"
 )
 
@@ -19,8 +20,13 @@ func (m *MockTalosService) Ping(nodeIp string) bool {
 	return args.Get(0).(bool)
 }
 
-func (m *MockTalosService) GenerateConfig(helperService interfaces.HelperServiceInterface, controlPlaneIp string, clusterName string) error {
-	args := m.Called(helperService, controlPlaneIp, clusterName)
+func (m *MockTalosService) GetLocalVersion() (string, error) {
+	args := m.Called()
+	return args.String(0), args.Error(1)
+}
+
+func (m *MockTalosService) GenerateConfig(helperService interfaces.HelperServiceInterface, controlPlaneIp string, clusterName string, talosVersion string) error {
+	args := m.Called(helperService, controlPlaneIp, clusterName, talosVersion)
 	return args.Error(0)
 }
 
@@ -39,9 +45,10 @@ func (m *MockTalosService) VerifyNodeHealth(helperService interfaces.HelperServi
 	return args.Error(0)
 }
 
-func (m *MockTalosService) GetDisks(helperService interfaces.HelperServiceInterface, nodeIp string) ([]string, error) {
-	args := m.Called(helperService, nodeIp)
-	return args.Get(0).([]string), args.Error(1)
+func (m *MockTalosService) GetDisks(nodeIp string) ([]models.TalosDisk, error) {
+	args := m.Called(nodeIp)
+	disks, _ := args.Get(0).([]models.TalosDisk)
+	return disks, args.Error(1)
 }
 
 func (m *MockTalosService) GetNetworkInterface(helperService interfaces.HelperServiceInterface, nodeIp string) (string, error) {
@@ -79,6 +86,16 @@ func (m *MockTalosService) ModifySchedulingOnControlPlane(helperService interfac
 	return args.Error(0)
 }
 
+func (m *MockTalosService) ModifyDnsServer(helperService interfaces.HelperServiceInterface, configFile string, dnsServer string) error {
+	args := m.Called(helperService, configFile, dnsServer)
+	return args.Error(0)
+}
+
+func (m *MockTalosService) ModifyTimeServer(helperService interfaces.HelperServiceInterface, configFile string, timeServer string) error {
+	args := m.Called(helperService, configFile, timeServer)
+	return args.Error(0)
+}
+
 func (m *MockTalosService) GetControlPlaneIp(helperService interfaces.HelperServiceInterface, configFile string) (string, error) {
 	args := m.Called(helperService, configFile)
 	return args.Get(0).(string), args.Error(1)
@@ -87,4 +104,8 @@ func (m *MockTalosService) GetControlPlaneIp(helperService interfaces.HelperServ
 func (m *MockTalosService) DownloadKubeConfig(helperService interfaces.HelperServiceInterface, nodeIp string, controlPlaneIp string) error {
 	args := m.Called(helperService, nodeIp, controlPlaneIp)
 	return args.Error(0)
+}
+
+func (m *MockTalosService) WarnIfTalosVersionMismatch(expectedVersion string) {
+	m.Called(expectedVersion)
 }

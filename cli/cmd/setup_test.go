@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,6 +12,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
+
+func startsWith(prefix string) func(string) bool {
+	return func(s string) bool {
+		return strings.HasPrefix(s, prefix)
+	}
+}
 
 func Test_setupCommand_Succeeds_WithControlPlane_RaspberryPi(t *testing.T) {
 	helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp := initSetupTests()
@@ -50,7 +57,7 @@ func Test_setupCommand_Succeeds_WithWorkerNode_RaspberryPi(t *testing.T) {
 func Test_setupCommand_Succeeds_WithControlPlane_IntelNUC(t *testing.T) {
 	helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp := initSetupTests()
 
-	uiService.On("CreateSelect", "What type of device are you setting up?", mock.Anything).Return("Intel NUC", nil)
+	uiService.On("CreateSelect", "What type of device are you setting up?", mock.Anything).Return("Bare Metal", nil)
 	uiService.On("CreateSelect", "Please use balenaEtcher to flash the .iso to your USB device", mock.Anything).Return("Done", nil)
 	uiService.On("CreateSelect", "Please insert the USB device into your new node and boot from it", mock.Anything).Return("Done", nil)
 
@@ -73,7 +80,7 @@ func Test_setupCommand_Succeeds_WithWorkerNode_IntelNUC(t *testing.T) {
 	uiService.On("CreateSelect", "Is this the first node in your cluster?", mock.Anything).Return("No", nil)
 	configService.On("CheckForTalosConfigs", helperService).Return(true)
 
-	uiService.On("CreateSelect", "What type of device are you setting up?", mock.Anything).Return("Intel NUC", nil)
+	uiService.On("CreateSelect", "What type of device are you setting up?", mock.Anything).Return("Bare Metal", nil)
 	uiService.On("CreateSelect", "Please use balenaEtcher to flash the .iso to your USB device", mock.Anything).Return("Done", nil)
 	uiService.On("CreateSelect", "Please insert the USB device into your new node and boot from it", mock.Anything).Return("Done", nil)
 
@@ -117,7 +124,7 @@ func Test_setupCommand_Succeeds_WithPreexistingImage(t *testing.T) {
 
 	now := time.Now()
 	helperService.On("CheckIfFileExists", mock.Anything).Return(&now, true)
-	uiService.On("CreateSelect", "An image already exists, would you like to redownload it?", mock.Anything).Return("No", nil)
+	uiService.On("CreateSelect", mock.MatchedBy(startsWith("An image already exists in")), mock.Anything).Return("No", nil)
 
 	mockSuccessfulSetupFlow(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp, true)
 
@@ -303,6 +310,7 @@ func Test_setupCommand_Fails_WhenEnrollingNewFirstNodeWithPreexistingConfigs(t *
 
 	uiService.On("CreateSelect", "Is this the first node in your cluster?", mock.Anything).Return("Yes", nil)
 	configService.On("CheckForTalosConfigs", helperService).Return(true)
+	helperService.On("GetConfigDir").Return("test-config-dir")
 
 	mockSuccessfulSetupFlow(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp, true)
 
@@ -355,10 +363,10 @@ func Test_setupCommand_Fails__WhenNoDevicesAreFound(t *testing.T) {
 	configService.AssertNumberOfCalls(t, "UpdateBbeClusterName", 0)
 }
 
-func Test_setupCommand_Fails__WhenNoDisksAreFound(t *testing.T) {
+func Test_setupCommand_Fails__WhenGettingDisksFails(t *testing.T) {
 	helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp := initSetupTests()
 
-	talosService.On("GetDisks", helperService, nodeIp).Return([]string{}, errors.New("test error"))
+	talosService.On("GetDisks", nodeIp).Return(nil, errors.New("test error"))
 
 	mockSuccessfulSetupFlow(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp, true)
 
@@ -376,7 +384,7 @@ func Test_setupCommand_Fails__WhenNoDisksAreFound(t *testing.T) {
 func Test_setupCommand_Fails__WhenFailingToGenerateTalosConfig(t *testing.T) {
 	helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp := initSetupTests()
 
-	talosService.On("GenerateConfig", helperService, chosenIp, "talos-cluster").Return(errors.New("test error"))
+	talosService.On("GenerateConfig", helperService, chosenIp, "talos-cluster", mock.Anything).Return(errors.New("test error"))
 
 	mockSuccessfulSetupFlow(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp, true)
 
@@ -625,6 +633,64 @@ func Test_setupCommand_Fails__WhenFailingToUpdateBbeClusterName(t *testing.T) {
 	configService.AssertNumberOfCalls(t, "UpdateBbeClusterName", 1)
 }
 
+func Test_setupCommand_Succeeds_ChecksTalosVersionBeforeJoining(t *testing.T) {
+	helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp := initSetupTests()
+
+	mockSuccessfulSetupFlow(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp, true)
+
+	err := setupCommand(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService)
+
+	assert.Nil(t, err)
+	talosService.AssertNumberOfCalls(t, "WarnIfTalosVersionMismatch", 1)
+	talosService.AssertNumberOfCalls(t, "JoinCluster", 1)
+}
+
+var usbDisk = models.TalosDisk{Spec: models.TalosDiskSpec{DevPath: "/dev/sda", PrettySize: "8.1 GB", Model: "ProductCode", Transport: "usb"}}
+var nvmeDisk = models.TalosDisk{Spec: models.TalosDiskSpec{DevPath: "/dev/nvme0n1", PrettySize: "256 GB", Model: "PC300 NVMe SK hynix 256GB", Transport: "nvme"}}
+
+func Test_setupCommand_Fails__WhenNoDisksAreFound(t *testing.T) {
+	helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp := initSetupTests()
+
+	talosService.On("GetDisks", nodeIp).Return([]models.TalosDisk{}, nil)
+
+	mockSuccessfulSetupFlow(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp, true)
+
+	err := setupCommand(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService)
+
+	assert.NotNil(t, err)
+	uiService.AssertNotCalled(t, "CreateSelect", "Please select the disk to install Talos on for 5.6.7.8", mock.Anything)
+	talosService.AssertNumberOfCalls(t, "ModifyConfigDisk", 0)
+}
+
+// the disk used to be read by column position out of talosctl's table, which picked up the
+// TYPE column and installed to "/dev/Disk"; the chosen entry must map to its own device path
+func Test_setupCommand_Succeeds_InstallsToTheSelectedDisk(t *testing.T) {
+	helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp := initSetupTests()
+
+	talosService.On("GetDisks", nodeIp).Return([]models.TalosDisk{usbDisk, nvmeDisk}, nil)
+	uiService.On("CreateSelect", "Please select the disk to install Talos on for 5.6.7.8", mock.Anything).Return(diskLabel(nvmeDisk), nil)
+	talosService.On("ModifyConfigDisk", helperService, constants.ControlplaneConfigFile, "/dev/nvme0n1").Return(nil)
+
+	mockSuccessfulSetupFlow(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp, true)
+
+	err := setupCommand(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService)
+
+	assert.Nil(t, err)
+	talosService.AssertCalled(t, "ModifyConfigDisk", helperService, constants.ControlplaneConfigFile, "/dev/nvme0n1")
+	talosService.AssertNotCalled(t, "ModifyConfigDisk", helperService, constants.ControlplaneConfigFile, "/dev/sda")
+}
+
+func Test_diskLabel_IncludesSizeModelAndTransport(t *testing.T) {
+	assert.Equal(t, "/dev/nvme0n1 - 256 GB PC300 NVMe SK hynix 256GB (nvme)", diskLabel(nvmeDisk))
+	assert.Equal(t, "/dev/sda - 8.1 GB ProductCode (usb)", diskLabel(usbDisk))
+}
+
+func Test_diskLabel_OmitsMissingDetails(t *testing.T) {
+	disk := models.TalosDisk{Spec: models.TalosDiskSpec{DevPath: "/dev/mmcblk0", PrettySize: "32 GB"}}
+
+	assert.Equal(t, "/dev/mmcblk0 - 32 GB", diskLabel(disk))
+}
+
 func initSetupTests() (*mocks.MockHelperService, *mocks.MockDependencyService, *mocks.MockTalosService, *mocks.MockIpFinderService, *mocks.MockUiService, *mocks.MockConfigService, *mocks.MockImageService, string, string, string) {
 	helperService := mocks.MockHelperService{}
 	dependencyService := mocks.MockDependencyService{}
@@ -651,7 +717,7 @@ func mockSuccessfulSetupFlow(helperService *mocks.MockHelperService, dependencyS
 	dependencyService.On("VerifyDependencies").Return(true)
 	uiService.On("CreateSelect", "Is this the first node in your cluster?", mock.Anything).Return("Yes", nil)
 	configService.On("CheckForTalosConfigs", helperService).Return(false)
-	uiService.On("CreateSelect", "What type of device are you setting up?", mock.Anything).Return("Raspberry Pi 4 (or older)", nil)
+	uiService.On("CreateSelect", "What type of device are you setting up?", mock.Anything).Return("Single Board Computer", nil)
 	now := time.Now()
 	helperService.On("CheckIfFileExists", mock.Anything).Return(&now, false)
 	imageService.On("CreateImage", mock.Anything, mock.Anything).Return("imagePath", nil)
@@ -659,22 +725,27 @@ func mockSuccessfulSetupFlow(helperService *mocks.MockHelperService, dependencyS
 	uiService.On("CreateSelect", "Please insert the SD card into your new node and boot from it", mock.Anything).Return("Done", nil)
 	ipFinderService.On("GetGatewayIp", helperService).Return(gatewayIp, nil)
 	ipFinderService.On("LocateDevice", helperService, talosService, gatewayIp).Return([]string{nodeIp}, nil)
-	uiService.On("CreateInput", "Please choose an ip for the new node", nodeIp).Return(chosenIp, nil)
-	talosService.On("GetDisks", helperService, nodeIp).Return([]string{"node", "namespace", "sda"}, nil)
-	uiService.On("CreateSelect", "Please select the disk to install Talos on for 5.6.7.8", mock.Anything).Return("node namespace sda", nil)
-	uiService.On("CreateInput", "Please choose the correct gateway ip", gatewayIp).Return(gatewayIp, nil)
-	uiService.On("CreateInput", "Please select the hostname", mock.Anything).Return("talos-node", nil)
+	uiService.On("CreateInput", mock.MatchedBy(startsWith("Please choose an ip for the new node")), nodeIp).Return(chosenIp, nil)
+	talosService.On("GetDisks", nodeIp).Return([]models.TalosDisk{usbDisk}, nil)
+	uiService.On("CreateSelect", "Please select the disk to install Talos on for 5.6.7.8", mock.Anything).Return(diskLabel(usbDisk), nil)
+	uiService.On("CreateInput", mock.MatchedBy(startsWith("Please choose the correct gateway ip")), gatewayIp).Return(gatewayIp, nil)
+	uiService.On("CreateInput", mock.MatchedBy(startsWith("Please choose the time server")), gatewayIp).Return(gatewayIp, nil)
+	uiService.On("CreateInput", mock.MatchedBy(startsWith("Please choose the DNS server")), gatewayIp).Return(gatewayIp, nil)
+	uiService.On("CreateInput", mock.MatchedBy(startsWith("Please select the hostname")), mock.Anything).Return("talos-node", nil)
 	uiService.On("CreateInput", "Please enter what you want to name your cluster", mock.Anything).Return("talos-cluster", nil)
 	uiService.On("CreateSelect", "Do you want to allow scheduling on the control plane? This is required if you have only one node.", mock.Anything).Return("Yes", nil)
-	talosService.On("GenerateConfig", helperService, chosenIp, "talos-cluster").Return(nil)
+	talosService.On("GenerateConfig", helperService, chosenIp, "talos-cluster", mock.Anything).Return(nil)
 	talosService.On("GetControlPlaneIp", helperService, constants.ControlplaneConfigFile).Return(chosenIp, nil)
 	talosService.On("ModifyNetworkNodeIp", helperService, nodeTypeConfigFile, chosenIp).Return(nil)
 	talosService.On("GetNetworkInterface", helperService, nodeIp).Return("eth0", nil)
 	talosService.On("ModifyNetworkInterface", helperService, nodeTypeConfigFile, "eth0").Return(nil)
 	talosService.On("ModifyNetworkGateway", helperService, nodeTypeConfigFile, gatewayIp).Return(nil)
 	talosService.On("ModifyNetworkHostname", helperService, nodeTypeConfigFile, "talos-node").Return(nil)
+	talosService.On("ModifyTimeServer", helperService, nodeTypeConfigFile, gatewayIp).Return(nil)
+	talosService.On("ModifyDnsServer", helperService, nodeTypeConfigFile, gatewayIp).Return(nil)
 	talosService.On("ModifySchedulingOnControlPlane", helperService, true).Return(nil)
 	talosService.On("ModifyConfigDisk", helperService, nodeTypeConfigFile, "/dev/sda").Return(nil)
+	talosService.On("WarnIfTalosVersionMismatch", mock.Anything).Return()
 	talosService.On("JoinCluster", helperService, nodeIp, nodeTypeConfigFile).Return(nil)
 	talosService.On("BootstrapCluster", helperService, chosenIp, chosenIp).Return(nil)
 	talosService.On("VerifyNodeHealth", helperService, chosenIp, chosenIp).Return(nil)

@@ -6,6 +6,7 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.36.2
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.77.1
 	github.com/briandowns/spinner v1.23.2
+	github.com/fatih/color v1.18.0
 	github.com/lucasepe/codename v0.2.0
 	github.com/spf13/cobra v1.9.1
 	github.com/stretchr/testify v1.10.0
@@ -39,7 +40,6 @@ require (
 	github.com/cqroot/multichoose v0.1.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f // indirect
-	github.com/fatih/color v1.18.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
@@ -60,7 +60,6 @@ require (
 require (
 	github.com/aws/aws-sdk-go-v2/config v1.29.7
 	github.com/cqroot/prompt v0.9.4
-	github.com/go-viper/mapstructure/v2 v2.4.0
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/spf13/pflag v1.0.6 // indirect
 	gopkg.in/yaml.v2 v2.4.0
