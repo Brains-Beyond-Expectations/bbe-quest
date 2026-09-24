@@ -31,7 +31,7 @@ func Test_installCommand_Succeeds(t *testing.T) {
 	packageService.AssertCalled(t, "InstallPackage", models.ChartEntry{
 		Name:    "package_to_be_installed",
 		Version: "3.0.0",
-	})
+	}, mock.Anything)
 }
 
 func Test_installCommand_Fails_WithNoCluster(t *testing.T) {
@@ -75,7 +75,7 @@ func Test_installCommand_Succeeds_ProceedsWhenFailingToUninstallPackages(t *test
 	packageService.AssertCalled(t, "InstallPackage", models.ChartEntry{
 		Name:    "package_always_installed",
 		Version: "1.0.0",
-	})
+	}, mock.Anything)
 }
 
 func Test_installCommand_Fails_WhenFailingToUpdateBbeConfigurationOnUninstall(t *testing.T) {
@@ -103,7 +103,7 @@ func Test_installCommand_Fails_WhenFailingToUpdateBbeConfigurationOnUninstall(t 
 func Test_installCommand_Fails_WhenFailingToInstallPackage(t *testing.T) {
 	helperService, uiService, configService, packageService, helmService := initInstallCommand()
 
-	packageService.On("InstallPackage", mock.Anything).Return(errors.New("test error"))
+	packageService.On("InstallPackage", mock.Anything, mock.Anything).Return(nil, errors.New("test error"))
 
 	mockSuccessfulInstallFlow(helperService, uiService, configService, packageService)
 
@@ -143,6 +143,44 @@ func Test_installCommand_Fails_WhenFailingToUpdateBbeConfigurationOnInstall(t *t
 		Version: "2.0.0",
 	})
 	packageService.AssertNumberOfCalls(t, "InstallPackage", 2)
+}
+
+func Test_installCommand_Succeeds_StoringPackageValues(t *testing.T) {
+	helperService, uiService, configService, packageService, helmService := initInstallCommand()
+
+	storedValues := map[string]interface{}{"service": map[string]interface{}{"ip": "192.168.1.240"}}
+	enteredValues := map[string]interface{}{"password": "entered"}
+	bbeConfig := &models.BbeConfig{}
+	bbeConfig.Bbe.Cluster.Name = "test"
+	bbeConfig.Bbe.Packages = []models.LocalPackage{
+		{
+			Name:    "package_always_installed",
+			Version: "1.0.0",
+			Values:  storedValues,
+		},
+	}
+	configService.On("GetBbeConfig", mock.Anything).Return(bbeConfig, nil)
+	packageService.On("InstallPackage", models.ChartEntry{Name: "package_always_installed", Version: "1.0.0"}, storedValues).Return(storedValues, nil)
+	packageService.On("InstallPackage", models.ChartEntry{Name: "package_to_be_installed", Version: "3.0.0"}, map[string]interface{}(nil)).Return(enteredValues, nil)
+
+	mockSuccessfulInstallFlow(helperService, uiService, configService, packageService)
+
+	err := installCommand(helperService, uiService, configService, packageService, helmService)
+
+	assert.Nil(t, err)
+	packageService.AssertNumberOfCalls(t, "InstallPackage", 2)
+	configService.AssertCalled(t, "UpdateBbePackages", mock.Anything, []models.LocalPackage{
+		{
+			Name:    "package_always_installed",
+			Version: "1.0.0",
+			Values:  storedValues,
+		},
+		{
+			Name:    "package_to_be_installed",
+			Version: "3.0.0",
+			Values:  enteredValues,
+		},
+	})
 }
 
 func initInstallCommand() (*mocks.MockHelperService, *mocks.MockUiService, *mocks.MockConfigService, *mocks.MockPackageService, *mocks.MockHelmService) {
@@ -195,5 +233,5 @@ func mockSuccessfulInstallFlow(_ *mocks.MockHelperService, uiService *mocks.Mock
 		},
 	}, nil)
 	packageService.On("UninstallPackage", mock.Anything).Return(nil)
-	packageService.On("InstallPackage", mock.Anything).Return(nil)
+	packageService.On("InstallPackage", mock.Anything, mock.Anything).Return(nil, nil)
 }

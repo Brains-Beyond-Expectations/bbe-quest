@@ -69,7 +69,7 @@ func installCommand(helperService interfaces.HelperServiceInterface, uiService i
 		return fmt.Errorf("Failed to uninstall packages: %w", err)
 	}
 
-	err = installPackages(helperService, configService, packageService, helmService, updatedBbeConfig, packagesToInstall)
+	err = installPackages(helperService, uiService, configService, packageService, helmService, updatedBbeConfig, packagesToInstall)
 	if err != nil {
 		return fmt.Errorf("Failed to install packages: %w", err)
 	}
@@ -135,9 +135,9 @@ func uninstallPackages(helperService interfaces.HelperServiceInterface, configSe
 	return nil
 }
 
-func installPackages(helperService interfaces.HelperServiceInterface, configService interfaces.ConfigServiceInterface, packageService interfaces.PackageServiceInterface, helmService interfaces.HelmServiceInterface, updatedBbeConfig models.BbeConfig, installedPackages []models.ChartEntry) error {
+func installPackages(helperService interfaces.HelperServiceInterface, uiService interfaces.UiServiceInterface, configService interfaces.ConfigServiceInterface, packageService interfaces.PackageServiceInterface, helmService interfaces.HelmServiceInterface, updatedBbeConfig models.BbeConfig, installedPackages []models.ChartEntry) error {
 	for _, pkg := range installedPackages {
-		err := packageService.InstallPackage(pkg, updatedBbeConfig, helmService)
+		values, err := packageService.InstallPackage(pkg, storedValues(updatedBbeConfig.Bbe.Packages, pkg.Name), updatedBbeConfig, helmService, uiService)
 		if err != nil {
 			return fmt.Errorf("Failed to install package: %w", err)
 		}
@@ -146,6 +146,7 @@ func installPackages(helperService interfaces.HelperServiceInterface, configServ
 		convertToPkg := &models.LocalPackage{
 			Name:    pkg.Name,
 			Version: pkg.Version,
+			Values:  values,
 		}
 
 		for i, existingPkg := range updatedBbeConfig.Bbe.Packages {
@@ -163,6 +164,17 @@ func installPackages(helperService interfaces.HelperServiceInterface, configServ
 	err := configService.UpdateBbePackages(helperService, updatedBbeConfig.Bbe.Packages)
 	if err != nil {
 		return fmt.Errorf("Failed to update BBE configuration: %w", err)
+	}
+
+	return nil
+}
+
+// The values a package was last installed with, so the user isn't asked for them again
+func storedValues(packages []models.LocalPackage, name string) map[string]interface{} {
+	for _, pkg := range packages {
+		if pkg.Name == name {
+			return pkg.Values
+		}
 	}
 
 	return nil

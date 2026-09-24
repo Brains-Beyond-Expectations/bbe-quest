@@ -88,36 +88,58 @@ func (packageService PackageService) GetAll() ([]models.ChartEntry, error) {
 	return library.Charts, nil
 }
 
-func (packageService PackageService) InstallPackage(chart models.ChartEntry, bbeConfig models.BbeConfig, helmService interfaces.HelmServiceInterface) error {
-	if !helmService.IsPackageInstalled(chart.Name, chart.Name, bbeConfig.Bbe.Cluster.Context) {
-		logger.Debug(fmt.Sprintf("Package `%s` not installed, adding helm repo...", chart.Name))
-		response := helmService.AddRepo(chart.RepositoryName, chart.RepositoryUrl)
-		logger.Debug(fmt.Sprintf("Helm repo added: %v", response))
-
-		if response != nil {
-			return response
-		}
-
-		return helmService.InstallChart(chart.Name, chart.Name, chart.RepositoryName, chart.Version, chart.Name, bbeConfig.Bbe.Cluster.Context)
+// Returns the values the package was installed with, including any the user was asked for
+func (packageService PackageService) InstallPackage(chart models.ChartEntry, values map[string]interface{}, bbeConfig models.BbeConfig, helmService interfaces.HelmServiceInterface, uiService interfaces.UiServiceInterface) (map[string]interface{}, error) {
+	if helmService.IsPackageInstalled(chart.Name, chart.Name, bbeConfig.Bbe.Cluster.Context) {
+		logger.Debug(fmt.Sprintf("Package `%s` already installed", chart.Name))
+		return values, nil
 	}
-	logger.Debug(fmt.Sprintf("Package `%s` already installed", chart.Name))
 
-	return nil
+	values, err := resolveValues(chart, values, helmService, uiService, true)
+	if err != nil {
+		return nil, err
+	}
+
+	logger.Debug(fmt.Sprintf("Package `%s` not installed, adding helm repo...", chart.Name))
+	response := helmService.AddRepo(chart.RepositoryName, chart.RepositoryUrl)
+	logger.Debug(fmt.Sprintf("Helm repo added: %v", response))
+
+	if response != nil {
+		return nil, response
+	}
+
+	err = helmService.InstallChart(chart.Name, chart.Name, chart.RepositoryName, chart.Version, chart.Name, bbeConfig.Bbe.Cluster.Context, values)
+	if err != nil {
+		return nil, err
+	}
+
+	return values, nil
 }
 
-func (packageService PackageService) UpgradePackage(chart models.ChartEntry, bbeConfig models.BbeConfig, helmService interfaces.HelmServiceInterface) error {
+// Returns the values the package was upgraded with, asking the user for any the new version requires when interactive
+func (packageService PackageService) UpgradePackage(chart models.ChartEntry, values map[string]interface{}, bbeConfig models.BbeConfig, helmService interfaces.HelmServiceInterface, uiService interfaces.UiServiceInterface, interactive bool) (map[string]interface{}, error) {
 	if !helmService.IsPackageInstalled(chart.Name, chart.Name, bbeConfig.Bbe.Cluster.Context) {
 		logger.Debug(fmt.Sprintf("Package `%s` not installed", chart.Name))
-		return fmt.Errorf("Package `%s` not installed", chart.Name)
+		return nil, fmt.Errorf("Package `%s` not installed", chart.Name)
+	}
+
+	values, err := resolveValues(chart, values, helmService, uiService, interactive)
+	if err != nil {
+		return nil, err
 	}
 
 	response := helmService.AddRepo(chart.RepositoryName, chart.RepositoryUrl)
 
 	if response != nil {
-		return response
+		return nil, response
 	}
 
-	return helmService.UpgradeChart(chart.Name, chart.Name, chart.RepositoryName, chart.Version, chart.Name, bbeConfig.Bbe.Cluster.Context)
+	err = helmService.UpgradeChart(chart.Name, chart.Name, chart.RepositoryName, chart.Version, chart.Name, bbeConfig.Bbe.Cluster.Context, values)
+	if err != nil {
+		return nil, err
+	}
+
+	return values, nil
 }
 
 func (packageService PackageService) UninstallPackage(chart models.LocalPackage, bbeConfig models.BbeConfig, helmService interfaces.HelmServiceInterface) error {
