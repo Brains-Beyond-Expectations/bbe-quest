@@ -1371,3 +1371,57 @@ func Test_DownloadKubeConfig_Fails_IfTalosCtlFails(t *testing.T) {
 	assert.NotNil(t, err)
 	helperService.AssertNumberOfCalls(t, "GetConfigFilePath", 1)
 }
+
+func Test_ModifyUserVolumes_Succeeds_AddingOnlyMissingVolumes(t *testing.T) {
+	configYaml := buildMultiDocYaml(t,
+		map[interface{}]interface{}{
+			"version": "v1alpha1",
+			"machine": map[interface{}]interface{}{"token": "secret-token"},
+		},
+		map[interface{}]interface{}{"apiVersion": "v1alpha1", "kind": models.TalosUserVolumeConfigKind, "name": "other", "volumeType": "directory"},
+		map[interface{}]interface{}{"kind": models.TalosHostnameConfigKind, "auto": "stable"},
+	)
+
+	mockOs := mocks.MockOs{}
+	mockOs.On("ReadFile", mock.Anything).Return(configYaml, nil)
+	mockOs.On("WriteFile", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	osReadFile = mockOs.ReadFile
+	osWriteFile = mockOs.WriteFile
+
+	helperService := mocks.MockHelperService{}
+	helperService.On("GetConfigDir").Return("test")
+
+	talosService := TalosService{}
+	err := talosService.ModifyUserVolumes(&helperService, constants.WorkerConfigFile, []string{"longhorn", "other"})
+
+	documents := decodeWrittenDocuments(t, mockOs.Calls[1].Arguments[1].([]byte))
+	for _, document := range documents {
+		assertNoLeakedModelKeys(t, document)
+	}
+
+	assert.Nil(t, err)
+	assert.Len(t, documents, 4)
+	assert.Equal(t, "secret-token", documents[0]["machine"].(map[interface{}]interface{})["token"])
+	assert.Equal(t, "other", documents[1]["name"])
+	assert.Equal(t, "stable", documents[2]["auto"])
+	assert.Equal(t, map[interface{}]interface{}{"apiVersion": "v1alpha1", "kind": "UserVolumeConfig", "name": "longhorn", "volumeType": "directory"}, documents[3])
+
+	osReadFile = os.ReadFile
+	osWriteFile = os.WriteFile
+}
+
+func Test_ModifyUserVolumes_Fails_IfConfigNotValid(t *testing.T) {
+	mockOs := mocks.MockOs{}
+	mockOs.On("ReadFile", mock.Anything).Return([]byte("invalid yaml"), nil)
+	osReadFile = mockOs.ReadFile
+
+	helperService := mocks.MockHelperService{}
+	helperService.On("GetConfigDir").Return("test")
+
+	talosService := TalosService{}
+	err := talosService.ModifyUserVolumes(&helperService, constants.WorkerConfigFile, []string{"longhorn"})
+
+	assert.NotNil(t, err)
+
+	osReadFile = os.ReadFile
+}

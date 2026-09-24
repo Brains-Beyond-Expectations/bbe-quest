@@ -301,6 +301,11 @@ func setupCommand(helperService interfaces.HelperServiceInterface, dependencySer
 		return fmt.Errorf("Error while storing the DNS server in file: %w", err)
 	}
 
+	err = talosService.ModifyUserVolumes(helperService, nodeConfigFile, constants.UserVolumes)
+	if err != nil {
+		return fmt.Errorf("Error while storing the user volumes in file: %w", err)
+	}
+
 	if allowSchedulingOnControlPlanes != "" {
 		scheduleOnControlPlane := allowSchedulingOnControlPlanes == "Yes"
 		err = talosService.ModifySchedulingOnControlPlane(helperService, scheduleOnControlPlane)
