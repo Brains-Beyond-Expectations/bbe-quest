@@ -202,6 +202,16 @@ func setupCommand(helperService interfaces.HelperServiceInterface, dependencySer
 		panic(err)
 	}
 
+	timeServer, err := uiService.CreateInput(fmt.Sprintf("Please choose the time server %s", italic("(press enter to accept the suggested time server)")), gatewayIp)
+	if err != nil {
+		panic(err)
+	}
+
+	dnsServer, err := uiService.CreateInput(fmt.Sprintf("Please choose the DNS server %s", italic("(press enter to accept the suggested dns server)")), gatewayIp)
+	if err != nil {
+		panic(err)
+	}
+
 	suggestedHostname := "big_brain_entropy_generator"
 	if rngError == nil {
 		suggestedHostname = codename.Generate(rng, 0)
@@ -279,6 +289,16 @@ func setupCommand(helperService interfaces.HelperServiceInterface, dependencySer
 	err = talosService.ModifyNetworkHostname(helperService, nodeConfigFile, hostname)
 	if err != nil {
 		return fmt.Errorf("Error while storing the hostname in file: %w", err)
+	}
+
+	err = talosService.ModifyTimeServer(helperService, nodeConfigFile, timeServer)
+	if err != nil {
+		return fmt.Errorf("Error while storing the time server in file: %w", err)
+	}
+
+	err = talosService.ModifyDnsServer(helperService, nodeConfigFile, dnsServer)
+	if err != nil {
+		return fmt.Errorf("Error while storing the DNS server in file: %w", err)
 	}
 
 	if allowSchedulingOnControlPlanes != "" {

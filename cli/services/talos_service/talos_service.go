@@ -350,6 +350,60 @@ func (talosService TalosService) ModifyNetworkHostname(helperService interfaces.
 	return writeDocuments(configDir, configFile, documents)
 }
 
+// ModifyDnsServer points the node at a specific DNS server. Like the time server this has
+// to be set explicitly: assigning a static address through LinkConfig disables DHCP on that
+// link, leaving the node with no nameservers at all.
+func (talosService TalosService) ModifyDnsServer(helperService interfaces.HelperServiceInterface, configFile string, dnsServer string) error {
+	configDir := helperService.GetConfigDir()
+
+	documents, err := getParsedDocuments(configDir, configFile)
+	if err != nil {
+		return err
+	}
+
+	var resolverConfig models.TalosResolverConfig
+	index, err := getOrCreateDocument(&documents, models.TalosResolverConfigKind, &resolverConfig)
+	if err != nil {
+		return err
+	}
+
+	resolverConfig.Nameservers = []models.TalosNameserver{{Address: dnsServer}}
+
+	if err := setDocument(documents, index, resolverConfig); err != nil {
+		return err
+	}
+
+	return writeDocuments(configDir, configFile, documents)
+}
+
+// ModifyTimeServer points the node at a specific NTP server. Talos otherwise falls back to
+// a public time server, which leaves nodes unable to sync their clock on networks that
+// don't allow outbound NTP - and a node whose clock is wrong fails certificate validation
+// during boot. This still lives in the primary document; Talos has not moved it into a
+// typed document of its own.
+func (talosService TalosService) ModifyTimeServer(helperService interfaces.HelperServiceInterface, configFile string, timeServer string) error {
+	configDir := helperService.GetConfigDir()
+
+	documents, err := getParsedDocuments(configDir, configFile)
+	if err != nil {
+		return err
+	}
+
+	var machineConfig models.TalosMachineConfig
+	index, err := getPrimaryDocument(documents, &machineConfig)
+	if err != nil {
+		return err
+	}
+
+	machineConfig.Machine.Time.Servers = []string{timeServer}
+
+	if err := setDocument(documents, index, machineConfig); err != nil {
+		return err
+	}
+
+	return writeDocuments(configDir, configFile, documents)
+}
+
 func (talosService TalosService) ModifyConfigDisk(helperService interfaces.HelperServiceInterface, configFile string, disk string) error {
 	configDir := helperService.GetConfigDir()
 
@@ -489,6 +543,29 @@ func findDocument(documents []map[string]interface{}, kind string) (map[string]i
 	}
 
 	return nil, -1
+}
+
+// findPrimaryDocument returns the primary v1alpha1.Config document - the one document that
+// carries no kind - along with its position, or -1 when the config doesn't contain one.
+func findPrimaryDocument(documents []map[string]interface{}) (map[string]interface{}, int) {
+	for index, document := range documents {
+		if _, hasKind := document["kind"]; !hasKind {
+			return document, index
+		}
+	}
+
+	return nil, -1
+}
+
+// getPrimaryDocument decodes the primary document into target, returning its position so it
+// can be written back with setDocument.
+func getPrimaryDocument(documents []map[string]interface{}, target interface{}) (int, error) {
+	document, index := findPrimaryDocument(documents)
+	if index == -1 {
+		return -1, fmt.Errorf("primary machine config document not found in config")
+	}
+
+	return index, decodeDocument(document, target)
 }
 
 // getDocument decodes the document matching kind into target, returning its position so it
