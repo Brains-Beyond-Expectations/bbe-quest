@@ -20,8 +20,13 @@ func (m *MockTalosService) Ping(nodeIp string) bool {
 	return args.Get(0).(bool)
 }
 
-func (m *MockTalosService) GenerateConfig(helperService interfaces.HelperServiceInterface, controlPlaneIp string, clusterName string) error {
-	args := m.Called(helperService, controlPlaneIp, clusterName)
+func (m *MockTalosService) GetLocalVersion() (string, error) {
+	args := m.Called()
+	return args.String(0), args.Error(1)
+}
+
+func (m *MockTalosService) GenerateConfig(helperService interfaces.HelperServiceInterface, controlPlaneIp string, clusterName string, talosVersion string) error {
+	args := m.Called(helperService, controlPlaneIp, clusterName, talosVersion)
 	return args.Error(0)
 }
 
@@ -89,4 +94,8 @@ func (m *MockTalosService) GetControlPlaneIp(helperService interfaces.HelperServ
 func (m *MockTalosService) DownloadKubeConfig(helperService interfaces.HelperServiceInterface, nodeIp string, controlPlaneIp string) error {
 	args := m.Called(helperService, nodeIp, controlPlaneIp)
 	return args.Error(0)
+}
+
+func (m *MockTalosService) WarnIfTalosVersionMismatch(expectedVersion string) {
+	m.Called(expectedVersion)
 }

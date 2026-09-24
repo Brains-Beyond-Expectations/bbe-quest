@@ -62,6 +62,75 @@ func Test_Ping_Succeeds_ReturnsTrueIf_TalosMachineFound(t *testing.T) {
 	assert.Equal(t, 2, timesCalled)
 }
 
+func Test_WarnIfTalosVersionMismatch_DoesNotPanic_WhenVersionsMatch(t *testing.T) {
+	execCommand = func(_ string, _ ...string) *exec.Cmd {
+		return exec.Command("bash", "-c", "echo 'Client:' && echo 'Talos v1.14.1'")
+	}
+
+	talosService := TalosService{}
+	assert.NotPanics(t, func() {
+		talosService.WarnIfTalosVersionMismatch("v1.14.1")
+	})
+}
+
+func Test_WarnIfTalosVersionMismatch_DoesNotPanic_WhenVersionsDiffer(t *testing.T) {
+	execCommand = func(_ string, _ ...string) *exec.Cmd {
+		return exec.Command("bash", "-c", "echo 'Client:' && echo 'Talos v1.14.1'")
+	}
+
+	talosService := TalosService{}
+	assert.NotPanics(t, func() {
+		talosService.WarnIfTalosVersionMismatch("v1.9.0")
+	})
+}
+
+func Test_WarnIfTalosVersionMismatch_DoesNotPanic_WhenLocalVersionFails(t *testing.T) {
+	execCommand = func(_ string, _ ...string) *exec.Cmd {
+		return exec.Command("exit", "1")
+	}
+
+	talosService := TalosService{}
+	assert.NotPanics(t, func() {
+		talosService.WarnIfTalosVersionMismatch("v1.14.1")
+	})
+}
+
+func Test_GetLocalVersion_Succeeds(t *testing.T) {
+	execCommand = func(_ string, _ ...string) *exec.Cmd {
+		return exec.Command("bash", "-c", "echo 'Client:' && echo 'Talos v1.14.1'")
+	}
+
+	talosService := TalosService{}
+	version, err := talosService.GetLocalVersion()
+
+	assert.Nil(t, err)
+	assert.Equal(t, "v1.14.1", version)
+}
+
+func Test_GetLocalVersion_Fails_IfTalosctlFails(t *testing.T) {
+	execCommand = func(_ string, _ ...string) *exec.Cmd {
+		return exec.Command("exit", "1")
+	}
+
+	talosService := TalosService{}
+	version, err := talosService.GetLocalVersion()
+
+	assert.NotNil(t, err)
+	assert.Empty(t, version)
+}
+
+func Test_GetLocalVersion_Fails_IfOutputUnparsable(t *testing.T) {
+	execCommand = func(_ string, _ ...string) *exec.Cmd {
+		return exec.Command("bash", "-c", "echo 'garbage output'")
+	}
+
+	talosService := TalosService{}
+	version, err := talosService.GetLocalVersion()
+
+	assert.NotNil(t, err)
+	assert.Empty(t, version)
+}
+
 func Test_GenerateConfig_Succeeds(t *testing.T) {
 	execCommand = func(_ string, _ ...string) *exec.Cmd {
 		return exec.Command("echo")
@@ -71,7 +140,7 @@ func Test_GenerateConfig_Succeeds(t *testing.T) {
 	helperService.On("GetConfigDir").Return("test")
 
 	talosService := TalosService{}
-	err := talosService.GenerateConfig(&helperService, "127.0.0.1", "test")
+	err := talosService.GenerateConfig(&helperService, "127.0.0.1", "test", "v1.14.1")
 
 	assert.Nil(t, err)
 	helperService.AssertNumberOfCalls(t, "GetConfigDir", 1)
@@ -86,7 +155,7 @@ func Test_GenerateConfig_Fails_WithConfigExistsError(t *testing.T) {
 	helperService.On("GetConfigDir").Return("test")
 
 	talosService := TalosService{}
-	err := talosService.GenerateConfig(&helperService, "127.0.0.1", "test")
+	err := talosService.GenerateConfig(&helperService, "127.0.0.1", "test", "v1.14.1")
 
 	assert.Error(t, err)
 	assert.Equal(t, constants.ConfigExistsError, err)
@@ -102,7 +171,7 @@ func Test_GenerateConfig_Fails_WithUnexpectedError(t *testing.T) {
 	helperService.On("GetConfigDir").Return("test")
 
 	talosService := TalosService{}
-	err := talosService.GenerateConfig(&helperService, "127.0.0.1", "test")
+	err := talosService.GenerateConfig(&helperService, "127.0.0.1", "test", "v1.14.1")
 
 	assert.Error(t, err)
 	assert.NotEqual(t, constants.ConfigExistsError, err)
