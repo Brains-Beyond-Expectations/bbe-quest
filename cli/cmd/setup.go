@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -173,16 +174,25 @@ func setupCommand(helperService interfaces.HelperServiceInterface, dependencySer
 	}
 
 	logger.Debug("Getting talos disks")
-	disks, err := talosService.GetDisks(helperService, originalIp)
+	disks, err := talosService.GetDisks(originalIp)
 	if err != nil {
 		return fmt.Errorf("Error while getting disks: %w", err)
 	}
 
-	disk, err := uiService.CreateSelect(fmt.Sprintf("Please select the disk to install Talos on for %s", chosenIp), disks)
+	if len(disks) == 0 {
+		return fmt.Errorf("No disk Talos could be installed to was found on %s", originalIp)
+	}
+
+	diskLabels := make([]string, len(disks))
+	for i, disk := range disks {
+		diskLabels[i] = diskLabel(disk)
+	}
+
+	selectedDisk, err := uiService.CreateSelect(fmt.Sprintf("Please select the disk to install Talos on for %s", chosenIp), diskLabels)
 	if err != nil {
 		panic(err)
 	}
-	diskSelectionResult := strings.Fields(disk)
+	installDisk := disks[slices.Index(diskLabels, selectedDisk)].Spec.DevPath
 
 	gatewayIp, err := uiService.CreateInput("Please choose the correct gateway ip", gatewayIpSuggestion)
 	if err != nil {
@@ -275,7 +285,7 @@ func setupCommand(helperService interfaces.HelperServiceInterface, dependencySer
 
 	spinner.Start()
 	logger.Debug("Modifying talos config disk")
-	err = talosService.ModifyConfigDisk(helperService, nodeConfigFile, fmt.Sprintf("/dev/%s", diskSelectionResult[2]))
+	err = talosService.ModifyConfigDisk(helperService, nodeConfigFile, installDisk)
 	if err != nil {
 		return fmt.Errorf("Error while modifying config disk: %w", err)
 	}
@@ -320,6 +330,21 @@ func setupCommand(helperService interfaces.HelperServiceInterface, dependencySer
 	spinner.Stop()
 
 	return nil
+}
+
+// diskLabel describes a disk for the install prompt. The transport is included because the
+// installer's own boot media - usually a USB stick - is listed alongside the real disks, and
+// installing to it would overwrite the installer.
+func diskLabel(disk models.TalosDisk) string {
+	details := []string{disk.Spec.PrettySize}
+	if disk.Spec.Model != "" {
+		details = append(details, disk.Spec.Model)
+	}
+	if disk.Spec.Transport != "" {
+		details = append(details, fmt.Sprintf("(%s)", disk.Spec.Transport))
+	}
+
+	return fmt.Sprintf("%s - %s", disk.Spec.DevPath, strings.Join(details, " "))
 }
 
 func imageCreation(helperService interfaces.HelperServiceInterface, uiService interfaces.UiServiceInterface, imageService interfaces.ImageServiceInterface, workingDirectory string, nodeType models.NodeType) error {

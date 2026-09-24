@@ -1,12 +1,14 @@
 package interfaces
 
+import "github.com/Brains-Beyond-Expectations/bbe-quest/cli/models"
+
 type TalosServiceInterface interface {
 	Ping(nodeIp string) bool
 	GenerateConfig(helperService HelperServiceInterface, controlPlaneIp string, clusterName string) error
 	JoinCluster(helperService HelperServiceInterface, nodeIp string, nodeConfigFile string) error
 	BootstrapCluster(helperService HelperServiceInterface, nodeIp string, controlPlaneIp string) error
 	VerifyNodeHealth(helperService HelperServiceInterface, nodeIp string, controlPlaneIp string) error
-	GetDisks(helperService HelperServiceInterface, nodeIp string) ([]string, error)
+	GetDisks(nodeIp string) ([]models.TalosDisk, error)
 	GetNetworkInterface(helperService HelperServiceInterface, nodeIp string) (string, error)
 	ModifyNetworkInterface(helperService HelperServiceInterface, configFile string, networkInterfaceName string) error
 	ModifyNetworkGateway(helperService HelperServiceInterface, configFile string, gatewayIp string) error

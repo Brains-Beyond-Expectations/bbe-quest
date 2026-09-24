@@ -1,7 +1,9 @@
 package talos_service
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -119,8 +121,11 @@ func (talosService TalosService) VerifyNodeHealth(helperService interfaces.Helpe
 	}
 }
 
-func (talosService TalosService) GetDisks(helperService interfaces.HelperServiceInterface, nodeIp string) ([]string, error) {
-	cmd := execCommand("bash", "-c", fmt.Sprintf(`talosctl -n %s get disks --insecure`, nodeIp))
+// GetDisks returns the disks Talos could be installed to. It reads talosctl's structured
+// output rather than its table, whose columns are not a stable interface, and leaves out
+// read-only devices and CD-ROMs - the loop devices backing the running system among them.
+func (talosService TalosService) GetDisks(nodeIp string) ([]models.TalosDisk, error) {
+	cmd := execCommand("talosctl", "-n", nodeIp, "get", "disks", "--insecure", "-o", "yaml")
 	output, err := cmd.CombinedOutput()
 	logger.Debug(string(output))
 
@@ -128,8 +133,29 @@ func (talosService TalosService) GetDisks(helperService interfaces.HelperService
 		return nil, err
 	}
 
-	disks := strings.Split(string(output), "\n")
-	disks = helperService.DeleteEmptyStrings(disks)
+	return parseDisks(output)
+}
+
+func parseDisks(output []byte) ([]models.TalosDisk, error) {
+	decoder := yaml.NewDecoder(bytes.NewReader(output))
+
+	disks := []models.TalosDisk{}
+	for {
+		var disk models.TalosDisk
+		err := decoder.Decode(&disk)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("could not parse disks: %w", err)
+		}
+
+		if disk.Spec.DevPath == "" || disk.Spec.ReadOnly || disk.Spec.CdRom {
+			continue
+		}
+
+		disks = append(disks, disk)
+	}
 
 	return disks, nil
 }
