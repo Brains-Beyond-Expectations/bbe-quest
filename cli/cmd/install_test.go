@@ -11,11 +11,11 @@ import (
 )
 
 func Test_installCommand_Succeeds(t *testing.T) {
-	helperService, uiService, configService, packageService, helmService := initInstallCommand()
+	helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService := initInstallCommand()
 
 	mockSuccessfulInstallFlow(helperService, uiService, configService, packageService)
 
-	err := installCommand(helperService, uiService, configService, packageService, helmService)
+	err := installCommand(helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService)
 
 	assert.Nil(t, err)
 	uiService.AssertNumberOfCalls(t, "CreateMultiChoose", 1)
@@ -35,13 +35,13 @@ func Test_installCommand_Succeeds(t *testing.T) {
 }
 
 func Test_installCommand_Fails_WithNoCluster(t *testing.T) {
-	helperService, uiService, configService, packageService, helmService := initInstallCommand()
+	helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService := initInstallCommand()
 
 	configService.On("GetBbeConfig", mock.Anything).Return(&models.BbeConfig{}, errors.New("test error"))
 
 	mockSuccessfulInstallFlow(helperService, uiService, configService, packageService)
 
-	err := installCommand(helperService, uiService, configService, packageService, helmService)
+	err := installCommand(helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService)
 
 	assert.Nil(t, err)
 	uiService.AssertNumberOfCalls(t, "CreateMultiChoose", 0)
@@ -53,13 +53,13 @@ func Test_installCommand_Fails_WithNoCluster(t *testing.T) {
 }
 
 func Test_installCommand_Succeeds_ProceedsWhenFailingToUninstallPackages(t *testing.T) {
-	helperService, uiService, configService, packageService, helmService := initInstallCommand()
+	helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService := initInstallCommand()
 
 	packageService.On("UninstallPackage", mock.Anything).Return(errors.New("test error"))
 
 	mockSuccessfulInstallFlow(helperService, uiService, configService, packageService)
 
-	err := installCommand(helperService, uiService, configService, packageService, helmService)
+	err := installCommand(helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService)
 
 	assert.Nil(t, err)
 	uiService.AssertNumberOfCalls(t, "CreateMultiChoose", 1)
@@ -79,13 +79,13 @@ func Test_installCommand_Succeeds_ProceedsWhenFailingToUninstallPackages(t *test
 }
 
 func Test_installCommand_Fails_WhenFailingToUpdateBbeConfigurationOnUninstall(t *testing.T) {
-	helperService, uiService, configService, packageService, helmService := initInstallCommand()
+	helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService := initInstallCommand()
 
 	configService.On("UpdateBbePackages", mock.Anything, mock.Anything).Return(errors.New("test error"))
 
 	mockSuccessfulInstallFlow(helperService, uiService, configService, packageService)
 
-	err := installCommand(helperService, uiService, configService, packageService, helmService)
+	err := installCommand(helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService)
 
 	assert.NotNil(t, err)
 	uiService.AssertNumberOfCalls(t, "CreateMultiChoose", 1)
@@ -101,18 +101,18 @@ func Test_installCommand_Fails_WhenFailingToUpdateBbeConfigurationOnUninstall(t 
 }
 
 func Test_installCommand_Fails_WhenFailingToInstallPackage(t *testing.T) {
-	helperService, uiService, configService, packageService, helmService := initInstallCommand()
+	helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService := initInstallCommand()
 
 	packageService.On("InstallPackage", mock.Anything, mock.Anything).Return(nil, errors.New("test error"))
 
 	mockSuccessfulInstallFlow(helperService, uiService, configService, packageService)
 
-	err := installCommand(helperService, uiService, configService, packageService, helmService)
+	err := installCommand(helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService)
 
 	assert.NotNil(t, err)
 	uiService.AssertNumberOfCalls(t, "CreateMultiChoose", 1)
 	configService.AssertNumberOfCalls(t, "GetBbeConfig", 1)
-	configService.AssertNumberOfCalls(t, "UpdateBbePackages", 1)
+	configService.AssertNumberOfCalls(t, "UpdateBbePackages", 2)
 	packageService.AssertNumberOfCalls(t, "GetAll", 1)
 	packageService.AssertNumberOfCalls(t, "UninstallPackage", 1)
 	packageService.AssertCalled(t, "UninstallPackage", models.LocalPackage{
@@ -123,14 +123,14 @@ func Test_installCommand_Fails_WhenFailingToInstallPackage(t *testing.T) {
 }
 
 func Test_installCommand_Fails_WhenFailingToUpdateBbeConfigurationOnInstall(t *testing.T) {
-	helperService, uiService, configService, packageService, helmService := initInstallCommand()
+	helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService := initInstallCommand()
 
 	configService.On("UpdateBbePackages", mock.Anything, mock.Anything).Return(nil).Once()
 	configService.On("UpdateBbePackages", mock.Anything, mock.Anything).Return(errors.New("test error"))
 
 	mockSuccessfulInstallFlow(helperService, uiService, configService, packageService)
 
-	err := installCommand(helperService, uiService, configService, packageService, helmService)
+	err := installCommand(helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService)
 
 	assert.NotNil(t, err)
 	uiService.AssertNumberOfCalls(t, "CreateMultiChoose", 1)
@@ -146,7 +146,7 @@ func Test_installCommand_Fails_WhenFailingToUpdateBbeConfigurationOnInstall(t *t
 }
 
 func Test_installCommand_Succeeds_StoringPackageValues(t *testing.T) {
-	helperService, uiService, configService, packageService, helmService := initInstallCommand()
+	helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService := initInstallCommand()
 
 	storedValues := map[string]interface{}{"service": map[string]interface{}{"ip": "192.168.1.240"}}
 	enteredValues := map[string]interface{}{"password": "entered"}
@@ -165,7 +165,7 @@ func Test_installCommand_Succeeds_StoringPackageValues(t *testing.T) {
 
 	mockSuccessfulInstallFlow(helperService, uiService, configService, packageService)
 
-	err := installCommand(helperService, uiService, configService, packageService, helmService)
+	err := installCommand(helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService)
 
 	assert.Nil(t, err)
 	packageService.AssertNumberOfCalls(t, "InstallPackage", 2)
@@ -183,14 +183,16 @@ func Test_installCommand_Succeeds_StoringPackageValues(t *testing.T) {
 	})
 }
 
-func initInstallCommand() (*mocks.MockHelperService, *mocks.MockUiService, *mocks.MockConfigService, *mocks.MockPackageService, *mocks.MockHelmService) {
-	helperService := &mocks.MockHelperService{}
-	uiService := &mocks.MockUiService{}
-	configService := &mocks.MockConfigService{}
-	packageService := &mocks.MockPackageService{}
-	helmService := &mocks.MockHelmService{}
+// The packages count as installed already, so their prerequisites aren't checked
+func initInstallCommand() (*mocks.MockHelperService, *mocks.MockUiService, *mocks.MockConfigService, *mocks.MockPackageService, *mocks.MockHelmService, *mocks.MockTalosService, *mocks.MockPrerequisiteService) {
+	helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService := newInstallMocks()
+	helmService.On("IsPackageInstalled", mock.Anything, mock.Anything, mock.Anything).Return(true)
 
-	return helperService, uiService, configService, packageService, helmService
+	return helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService
+}
+
+func newInstallMocks() (*mocks.MockHelperService, *mocks.MockUiService, *mocks.MockConfigService, *mocks.MockPackageService, *mocks.MockHelmService, *mocks.MockTalosService, *mocks.MockPrerequisiteService) {
+	return &mocks.MockHelperService{}, &mocks.MockUiService{}, &mocks.MockConfigService{}, &mocks.MockPackageService{}, &mocks.MockHelmService{}, &mocks.MockTalosService{}, &mocks.MockPrerequisiteService{}
 }
 
 func mockSuccessfulInstallFlow(_ *mocks.MockHelperService, uiService *mocks.MockUiService, configService *mocks.MockConfigService, packageService *mocks.MockPackageService) {
