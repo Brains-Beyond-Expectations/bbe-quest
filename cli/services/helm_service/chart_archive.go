@@ -10,9 +10,11 @@ import (
 	"maps"
 	"os"
 	"path"
+	"regexp"
 	"slices"
 	"strings"
 
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/constants"
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/misc/logger"
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/models"
 	"gopkg.in/yaml.v3"
@@ -75,6 +77,12 @@ func parseChart(files map[string][]byte, dir string) (*models.HelmChart, error) 
 
 	chart := &models.HelmChart{Name: metadata.Name, Dependencies: metadata.Dependencies}
 
+	prerequisites, err := parsePrerequisites(metadata.Annotations[constants.PrerequisitesAnnotation])
+	if err != nil {
+		return nil, fmt.Errorf("Failed to parse the %s annotation in %s/Chart.yaml: %w", constants.PrerequisitesAnnotation, dir, err)
+	}
+	chart.Prerequisites = prerequisites
+
 	if content, found := files[dir+"/values.yaml"]; found {
 		if err := yaml.Unmarshal(content, &chart.Values); err != nil {
 			return nil, fmt.Errorf("Failed to parse %s/values.yaml: %w", dir, err)
@@ -132,4 +140,40 @@ func subchartDirs(files map[string][]byte, dir string) []string {
 	slices.Sort(dirs)
 
 	return dirs
+}
+
+// Talos names user volumes with letters, digits and hyphens, and mounts them at /var/mnt/<name>
+var userVolumePath = regexp.MustCompile(`^/var/mnt/[A-Za-z0-9-]+$`)
+
+// A mistake in the annotation fails loudly, as installing without a prerequisite would fail later and less clearly
+func parsePrerequisites(annotation string) ([]models.ChartPrerequisite, error) {
+	if strings.TrimSpace(annotation) == "" {
+		return nil, nil
+	}
+
+	var prerequisites []models.ChartPrerequisite
+	if err := yaml.Unmarshal([]byte(annotation), &prerequisites); err != nil {
+		return nil, err
+	}
+
+	for _, prerequisite := range prerequisites {
+		if prerequisite.Name == "" {
+			return nil, errors.New("every prerequisite needs a name")
+		}
+		if prerequisite.StorageClass == "" && prerequisite.Talos == nil {
+			return nil, fmt.Errorf("prerequisite `%s` has nothing to check", prerequisite.Name)
+		}
+		if prerequisite.Talos != nil {
+			for _, directory := range prerequisite.Talos.Directories {
+				if !userVolumePath.MatchString(directory) {
+					return nil, fmt.Errorf("prerequisite `%s` has directory `%s`, which has to be directly under /var/mnt", prerequisite.Name, directory)
+				}
+			}
+		}
+		if prerequisite.StorageClass != "" && prerequisite.Package == "" {
+			return nil, fmt.Errorf("prerequisite `%s` needs a package that provides its storage class", prerequisite.Name)
+		}
+	}
+
+	return prerequisites, nil
 }

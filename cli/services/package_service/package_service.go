@@ -115,6 +115,16 @@ func (packageService PackageService) UpgradePackage(chart models.ChartEntry, val
 	return values, nil
 }
 
+// Returns what the chart needs in the cluster before it can be installed, from its Chart.yaml
+func (packageService PackageService) GetPrerequisites(chart models.ChartEntry, helmService interfaces.HelmServiceInterface) ([]models.ChartPrerequisite, error) {
+	helmChart, err := helmService.PullChart(chart.RepositoryUrl, chart.Name, chart.Version)
+	if err != nil {
+		return nil, err
+	}
+
+	return helmChart.Prerequisites, nil
+}
+
 func (packageService PackageService) UninstallPackage(chart models.LocalPackage, bbeConfig models.BbeConfig, helmService interfaces.HelmServiceInterface) error {
 	if !helmService.IsPackageInstalled(chart.Name, chart.Name, bbeConfig.Bbe.Cluster.Context) {
 		logger.Debug(fmt.Sprintf("Package `%s` not installed", chart.Name))
