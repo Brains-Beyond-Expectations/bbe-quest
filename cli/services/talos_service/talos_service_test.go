@@ -250,20 +250,76 @@ func Test_GetDisks_Fails_IfTalosCtlFails(t *testing.T) {
 	helperService.AssertNumberOfCalls(t, "DeleteEmptyStrings", 0)
 }
 
+// realistic "talosctl get addresses" output: talosctl repeats the node IP in the NODE
+// column of every row, and each link appears more than once (IPv4 plus link-local IPv6).
+const addressesOutput = `NODE            NAMESPACE   TYPE            ID                                      VERSION   ADDRESS                                 LINK
+192.168.1.50    network     AddressStatus   enp57s0u1u1/192.168.1.50/24             1         192.168.1.50/24                         enp57s0u1u1
+192.168.1.50    network     AddressStatus   enp57s0u1u1/fe80::1e69:7aff:fe2d:1/64   2         fe80::1e69:7aff:fe2d:1/64               enp57s0u1u1
+192.168.1.50    network     AddressStatus   lo/127.0.0.1/8                          1         127.0.0.1/8                             lo
+192.168.1.50    network     AddressStatus   lo/::1/128                              1         ::1/128                                 lo
+`
+
 func Test_GetNetworkInterface_Succeeds(t *testing.T) {
 	execCommand = func(_ string, _ ...string) *exec.Cmd {
-		return exec.Command("bash", "-c", "echo eth0")
+		return exec.Command("echo", addressesOutput)
 	}
 
 	helperService := mocks.MockHelperService{}
 	helperService.On("GetConfigFilePath", constants.TalosConfigFile).Return("test")
 
 	talosService := TalosService{}
-	networkInterface, err := talosService.GetNetworkInterface(&helperService, "127.0.0.1")
+	networkInterface, err := talosService.GetNetworkInterface(&helperService, "192.168.1.50")
 
-	assert.NotEmpty(t, networkInterface)
 	assert.Nil(t, err)
+	assert.Equal(t, "enp57s0u1u1", networkInterface)
 	helperService.AssertNumberOfCalls(t, "GetConfigFilePath", 1)
+}
+
+// the old implementation matched whole lines, so the node IP in the NODE column matched
+// every row and it returned every link joined by newlines - which Talos then silently
+// ignored, leaving the node with no address at all
+func Test_GetNetworkInterface_Succeeds_ReturnsSingleLinkNotEveryLink(t *testing.T) {
+	execCommand = func(_ string, _ ...string) *exec.Cmd {
+		return exec.Command("echo", addressesOutput)
+	}
+
+	helperService := mocks.MockHelperService{}
+	helperService.On("GetConfigFilePath", constants.TalosConfigFile).Return("test")
+
+	talosService := TalosService{}
+	networkInterface, err := talosService.GetNetworkInterface(&helperService, "192.168.1.50")
+
+	assert.Nil(t, err)
+	assert.NotContains(t, networkInterface, "\n")
+	assert.NotContains(t, networkInterface, "lo")
+}
+
+func Test_GetNetworkInterface_Fails_IfNodeIpNotPresent(t *testing.T) {
+	execCommand = func(_ string, _ ...string) *exec.Cmd {
+		return exec.Command("echo", addressesOutput)
+	}
+
+	helperService := mocks.MockHelperService{}
+	helperService.On("GetConfigFilePath", constants.TalosConfigFile).Return("test")
+
+	talosService := TalosService{}
+	networkInterface, err := talosService.GetNetworkInterface(&helperService, "10.0.0.1")
+
+	assert.NotNil(t, err)
+	assert.Empty(t, networkInterface)
+}
+
+// a node IP that is a string prefix of another address on the machine must not match it
+func Test_ParseNetworkInterface_DoesNotMatchLongerAddress(t *testing.T) {
+	output := `NODE           NAMESPACE   TYPE            ID                            VERSION   ADDRESS            LINK
+192.168.1.16   network     AddressStatus   enp0s31f6/192.168.1.161/24    1         192.168.1.161/24   enp0s31f6
+192.168.1.16   network     AddressStatus   eth1/192.168.1.16/24          1         192.168.1.16/24    eth1
+`
+
+	networkInterface, err := parseNetworkInterface(output, "192.168.1.16")
+
+	assert.Nil(t, err)
+	assert.Equal(t, "eth1", networkInterface)
 }
 
 func Test_GetNetworkInterface_Fails_IfTalosctlFails(t *testing.T) {
@@ -275,7 +331,7 @@ func Test_GetNetworkInterface_Fails_IfTalosctlFails(t *testing.T) {
 	helperService.On("GetConfigFilePath", constants.TalosConfigFile).Return("test")
 
 	talosService := TalosService{}
-	networkInterface, err := talosService.GetNetworkInterface(&helperService, "127.0.0.1")
+	networkInterface, err := talosService.GetNetworkInterface(&helperService, "192.168.1.50")
 
 	assert.Empty(t, networkInterface)
 	assert.NotNil(t, err)
