@@ -11,6 +11,7 @@ cover.out
 __debug_*
 coverage.out
 *.code-workspace
+coverage.html
 
 # Binary
 cli/cli
