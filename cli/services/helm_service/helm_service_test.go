@@ -311,3 +311,24 @@ func Test_Helm_Service_Fails_Pull_Chart_Without_Temporary_Directory(t *testing.T
 	assert.Nil(t, chart)
 	assert.EqualError(t, err, "Failed to create a directory for helm chart `chartName`: Mock mkdir failure")
 }
+
+func Test_chartNotes_Succeeds_ReadingTheNotesFromHelmsOutput(t *testing.T) {
+	response := []byte("NAME: bbe-media\nSTATUS: deployed\nREVISION: 1\nNOTES:\nEvery app uses the same login\n  username: admin\n\n")
+
+	assert.Equal(t, "Every app uses the same login\n  username: admin", chartNotes(response))
+	assert.Equal(t, "", chartNotes([]byte("NAME: bbe-media\nSTATUS: deployed\n")))
+	assert.Equal(t, "", chartNotes(nil))
+}
+
+func Test_Helm_Service_Succeeds_Install_And_Upgrade_Chart_With_Notes(t *testing.T) {
+	execCommand = func(_ string, _ ...string) *exec.Cmd {
+		return exec.Command("printf", "NAME: test\nNOTES:\nRead the password with kubectl\n")
+	}
+
+	helmService := HelmService{}
+	installErr := helmService.InstallChart("packageName", "chartName", "repoName", "version", "namespace", "context", nil)
+	upgradeErr := helmService.UpgradeChart("packageName", "chartName", "repoName", "version", "namespace", "context", nil)
+
+	assert.NoError(t, installErr)
+	assert.NoError(t, upgradeErr)
+}

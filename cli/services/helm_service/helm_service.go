@@ -55,6 +55,7 @@ func (HelmService HelmService) InstallChart(pkgName string, chartName string, re
 	if err != nil {
 		return fmt.Errorf("Failed to install helm package `%s`: %w%s", pkgName, err, helmOutput(response))
 	}
+	showNotes(pkgName, response)
 	return nil
 }
 
@@ -68,9 +69,11 @@ func (HelmService HelmService) UpgradeChart(pkgName string, chartName string, re
 		return fmt.Errorf("Failed to upgrade helm package `%s`: %w", pkgName, err)
 	}
 
-	if response, err := cmd.CombinedOutput(); err != nil {
+	response, err := cmd.CombinedOutput()
+	if err != nil {
 		return fmt.Errorf("Failed to upgrade helm package `%s`: %w%s", pkgName, err, helmOutput(response))
 	}
+	showNotes(pkgName, response)
 	return nil
 }
 
@@ -169,4 +172,20 @@ func helmOutput(response []byte) string {
 	}
 
 	return "\n" + output
+}
+
+// Charts explain what to do next in their notes, such as how to read a password they generated
+func showNotes(pkgName string, response []byte) {
+	if notes := chartNotes(response); notes != "" {
+		logger.Info(fmt.Sprintf("Notes from `%s`:\n%s", pkgName, notes))
+	}
+}
+
+func chartNotes(response []byte) string {
+	_, notes, found := strings.Cut(string(response), "\nNOTES:\n")
+	if !found {
+		return ""
+	}
+
+	return strings.TrimRight(notes, "\n ")
 }
