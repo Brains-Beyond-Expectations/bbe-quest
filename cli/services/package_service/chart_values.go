@@ -390,6 +390,11 @@ func convertInput(types []string, input string) (interface{}, error) {
 }
 
 // bbe.yaml is read with yaml.v2, which decodes nested maps with interface{} keys
+// Turns values read from bbe.yaml, whose maps have interface keys, into maps with string keys
+func NormalizeValues(values map[string]interface{}) map[string]interface{} {
+	return normalizeValues(values)
+}
+
 func normalizeValues(values map[string]interface{}) map[string]interface{} {
 	if values == nil {
 		return nil

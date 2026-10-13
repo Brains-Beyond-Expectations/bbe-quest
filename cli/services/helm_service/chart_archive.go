@@ -92,6 +92,12 @@ func parseChart(files map[string][]byte, dir string) (*models.HelmChart, error) 
 	}
 	chart.PodSecurity = podSecurity
 
+	settings, err := parseSettings(metadata.Annotations[constants.SettingsAnnotation])
+	if err != nil {
+		return nil, fmt.Errorf("Failed to parse the %s annotation in %s/Chart.yaml: %w", constants.SettingsAnnotation, dir, err)
+	}
+	chart.Settings = settings
+
 	if content, found := files[dir+"/values.yaml"]; found {
 		if err := yaml.Unmarshal(content, &chart.Values); err != nil {
 			return nil, fmt.Errorf("Failed to parse %s/values.yaml: %w", dir, err)
@@ -185,4 +191,35 @@ func parsePrerequisites(annotation string) ([]models.ChartPrerequisite, error) {
 	}
 
 	return prerequisites, nil
+}
+
+// The catalogs bbe knows how to read
+var settingCatalogTypes = []string{"prowlarr-indexers"}
+
+func parseSettings(annotation string) ([]models.ChartSetting, error) {
+	if strings.TrimSpace(annotation) == "" {
+		return nil, nil
+	}
+
+	var settings []models.ChartSetting
+	if err := yaml.Unmarshal([]byte(annotation), &settings); err != nil {
+		return nil, err
+	}
+
+	for _, setting := range settings {
+		if setting.Name == "" || setting.Values == "" {
+			return nil, errors.New("every setting needs a name and the path of its values")
+		}
+		if setting.Catalog == nil {
+			return nil, fmt.Errorf("setting `%s` needs a catalog to add entries from", setting.Name)
+		}
+		if !slices.Contains(settingCatalogTypes, setting.Catalog.Type) {
+			return nil, fmt.Errorf("setting `%s` has catalog type `%s`, which bbe doesn't know", setting.Name, setting.Catalog.Type)
+		}
+		if setting.Catalog.Service == "" || setting.Catalog.Port == 0 || setting.Catalog.ApiKey == nil || setting.Catalog.ApiKey.Secret == "" || setting.Catalog.ApiKey.Key == "" {
+			return nil, fmt.Errorf("setting `%s` needs the catalog's service, port and API key", setting.Name)
+		}
+	}
+
+	return settings, nil
 }

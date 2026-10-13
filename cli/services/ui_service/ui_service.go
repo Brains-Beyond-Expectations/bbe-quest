@@ -2,6 +2,7 @@ package ui_service
 
 import (
 	"github.com/cqroot/prompt"
+	"github.com/cqroot/prompt/input"
 	"github.com/cqroot/prompt/multichoose"
 )
 
@@ -23,6 +24,15 @@ func (uiService UiService) CreateInput(title string, suggestion string) (string,
 		return "", err
 	}
 
+	return result, nil
+}
+
+// Like CreateInput, but masks what's typed, for credentials
+func (uiService UiService) CreatePassword(title string) (string, error) {
+	result, err := prompt.New().Ask(title).Input("", input.WithEchoMode(input.EchoPassword))
+	if err != nil {
+		return "", err
+	}
 	return result, nil
 }
 
