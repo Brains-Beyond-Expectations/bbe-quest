@@ -1,5 +1,7 @@
 package models
 
+import "strings"
+
 type Library struct {
 	Library []LibraryEntry `mapstructure:"library"`
 }
@@ -15,4 +17,9 @@ type ChartEntry struct {
 	Version        string `mapstructure:"version" yaml:"version"`
 	RepositoryUrl  string `mapstructure:"repositoryUrl" yaml:"repositoryUrl"`
 	RepositoryName string `mapstructure:"repositoryName" yaml:"repositoryName"`
+}
+
+// The folder of a chart that isn't packaged, given as a file:// repository URL in a library on disk
+func (chart ChartEntry) LocalPath() (string, bool) {
+	return strings.CutPrefix(chart.RepositoryUrl, "file://")
 }
