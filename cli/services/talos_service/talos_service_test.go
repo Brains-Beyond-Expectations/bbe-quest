@@ -1,6 +1,7 @@
 package talos_service
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"strings"
@@ -1424,4 +1425,27 @@ func Test_ModifyUserVolumes_Fails_IfConfigNotValid(t *testing.T) {
 	assert.NotNil(t, err)
 
 	osReadFile = os.ReadFile
+}
+
+func Test_ModifyUserVolumes_Fails_IfVolumeCannotBeEncoded(t *testing.T) {
+	configYaml := buildMultiDocYaml(t, map[interface{}]interface{}{"version": "v1alpha1"})
+
+	mockOs := mocks.MockOs{}
+	mockOs.On("ReadFile", mock.Anything).Return(configYaml, nil)
+	osReadFile = mockOs.ReadFile
+	yamlMarshal = func(interface{}) ([]byte, error) {
+		return nil, errors.New("Mock failed to encode")
+	}
+
+	helperService := mocks.MockHelperService{}
+	helperService.On("GetConfigDir").Return("test")
+
+	talosService := TalosService{}
+	err := talosService.ModifyUserVolumes(&helperService, constants.WorkerConfigFile, []string{"longhorn"})
+
+	assert.EqualError(t, err, "Mock failed to encode")
+	mockOs.AssertNotCalled(t, "WriteFile", mock.Anything, mock.Anything, mock.Anything)
+
+	osReadFile = os.ReadFile
+	yamlMarshal = yaml.Marshal
 }

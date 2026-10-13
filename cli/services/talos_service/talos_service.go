@@ -24,6 +24,7 @@ var fiveMinutes = 5 * time.Minute
 
 var osReadFile = os.ReadFile
 var osWriteFile = os.WriteFile
+var yamlMarshal = yaml.Marshal
 
 var talosVersionRegex = regexp.MustCompile(`Talos\s+(v[0-9]+\.[0-9]+\.[0-9]+)`)
 
@@ -632,7 +633,7 @@ func getOrCreateDocument(documents *[]map[string]interface{}, kind string, targe
 // setDocument encodes source back over the document at index, keeping every other document
 // in the config untouched.
 func setDocument(documents []map[string]interface{}, index int, source interface{}) error {
-	encoded, err := yaml.Marshal(source)
+	encoded, err := yamlMarshal(source)
 	if err != nil {
 		return err
 	}
