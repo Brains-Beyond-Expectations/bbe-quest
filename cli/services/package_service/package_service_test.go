@@ -5,6 +5,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/constants"
@@ -258,20 +260,74 @@ func Test_UninstallPackage_Fails_WhenPackageNotInstalled(t *testing.T) {
 	assert.Error(t, err)
 }
 
-func Test_getRemoteLibrary_Fails_WhenInvalidProtocol(t *testing.T) {
-
-	// Override the BbeLibraryUrl constant to point to our test server
+func Test_getRemoteLibrary_Fails_WhenTheLibraryFileIsMissing(t *testing.T) {
 	originalUrl := constants.BbeLibraryUrl
 	constants.BbeLibraryUrl = "thisIsNotReal"
 	defer func() { constants.BbeLibraryUrl = originalUrl }()
 
-	mockErrorMessage := "unsupported protocol scheme"
+	result, err := getRemoteLibrary()
+
+	assert.Nil(t, result)
+	assert.ErrorContains(t, err, "open thisIsNotReal: no such file or directory")
+}
+
+func Test_getRemoteLibrary_Fails_WhenTheLibraryIsNotFound(t *testing.T) {
+	ts := httptest.NewServer(http.NotFoundHandler())
+	defer ts.Close()
+
+	originalUrl := constants.BbeLibraryUrl
+	constants.BbeLibraryUrl = ts.URL + "/library.yaml"
+	defer func() { constants.BbeLibraryUrl = originalUrl }()
 
 	result, err := getRemoteLibrary()
 
-	assert.Error(t, err)
 	assert.Nil(t, result)
-	assert.Contains(t, err.Error(), mockErrorMessage)
+	assert.EqualError(t, err, "Failed to fetch the package library from "+ts.URL+"/library.yaml: 404 Not Found")
+}
+
+func Test_getRemoteLibrary_Fails_WhenTheServerCannotBeReached(t *testing.T) {
+	originalUrl := constants.BbeLibraryUrl
+	constants.BbeLibraryUrl = "http://127.0.0.1:1/library.yaml"
+	defer func() { constants.BbeLibraryUrl = originalUrl }()
+
+	result, err := getRemoteLibrary()
+
+	assert.Nil(t, result)
+	assert.ErrorContains(t, err, "connection refused")
+}
+
+func Test_getRemoteLibrary_Succeeds_ReadingAFileWithChartFolders(t *testing.T) {
+	dir := t.TempDir()
+	library := filepath.Join(dir, "library.yaml")
+	os.WriteFile(library, []byte(`library:
+  - min-bbe-cli: "0.0.0"
+    charts:
+      - name: bbe-networking
+        version: 0.0.0-local
+        repositoryUrl: file://charts/bbe-networking
+        repositoryName: local
+      - name: bbe-storage
+        version: 0.0.0-local
+        repositoryUrl: file:///srv/bbe-storage
+        repositoryName: local
+      - name: blocky
+        version: 1.1.1
+        repositoryUrl: https://bbe.example
+        repositoryName: bbe
+`), 0644)
+
+	for _, source := range []string{library, "file://" + library} {
+		originalUrl := constants.BbeLibraryUrl
+		constants.BbeLibraryUrl = source
+
+		result, err := getRemoteLibrary()
+
+		constants.BbeLibraryUrl = originalUrl
+		assert.NoError(t, err, source)
+		assert.Equal(t, "file://"+filepath.Join(dir, "charts", "bbe-networking"), result.Charts[0].RepositoryUrl, source)
+		assert.Equal(t, "file:///srv/bbe-storage", result.Charts[1].RepositoryUrl, source)
+		assert.Equal(t, "https://bbe.example", result.Charts[2].RepositoryUrl, source)
+	}
 }
 
 func Test_getRemoteLibrary_Fails_WhenIOReadFails(t *testing.T) {
@@ -506,4 +562,94 @@ func Test_isRevisionSupported_Fails_WhenVersionBelowMinimum(t *testing.T) {
 func Test_isRevisionSupported_Fails_WhenVersionInvalid(t *testing.T) {
 	assert.False(t, isRevisionSupported("latest", "v1.0.0"))
 	assert.False(t, isRevisionSupported("0.6.0", "not-a-version"))
+}
+
+func Test_InstallPackage_Succeeds_PreparingTheNamespaceForThePodSecurityLevel(t *testing.T) {
+	chart := chartRequiring()
+	chart.PodSecurity = "privileged"
+	mockHelmService := &mocks.MockHelmService{}
+	mockHelmService.On("IsPackageInstalled", mock.Anything, mock.Anything, mock.Anything).Return(false)
+	mockHelmService.On("PullChart", mock.Anything, mock.Anything, mock.Anything).Return(chart, nil)
+	mockHelmService.On("AddRepo", mock.Anything, mock.Anything).Return(nil)
+	mockHelmService.On("PrepareNamespace", "bbe-networking", "test-context", "privileged").Return(nil)
+	mockHelmService.On("InstallChart", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+	bbeConfig := models.BbeConfig{}
+	bbeConfig.Bbe.Cluster.Context = "test-context"
+	_, err := PackageService{}.InstallPackage(models.ChartEntry{Name: "bbe-networking"}, nil, bbeConfig, mockHelmService, &mocks.MockUiService{})
+
+	assert.NoError(t, err)
+	mockHelmService.AssertCalled(t, "PrepareNamespace", "bbe-networking", "test-context", "privileged")
+	mockHelmService.AssertCalled(t, "InstallChart", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+func Test_InstallPackage_Fails_WhenTheNamespaceCannotBePrepared(t *testing.T) {
+	chart := chartRequiring()
+	chart.PodSecurity = "privileged"
+	mockHelmService := &mocks.MockHelmService{}
+	mockHelmService.On("IsPackageInstalled", mock.Anything, mock.Anything, mock.Anything).Return(false)
+	mockHelmService.On("PullChart", mock.Anything, mock.Anything, mock.Anything).Return(chart, nil)
+	mockHelmService.On("AddRepo", mock.Anything, mock.Anything).Return(nil)
+	mockHelmService.On("PrepareNamespace", mock.Anything, mock.Anything, mock.Anything).Return(errors.New("Mock failed to label"))
+
+	values, err := PackageService{}.InstallPackage(models.ChartEntry{Name: "bbe-networking"}, nil, models.BbeConfig{}, mockHelmService, &mocks.MockUiService{})
+
+	assert.Nil(t, values)
+	assert.EqualError(t, err, "Mock failed to label")
+	mockHelmService.AssertNotCalled(t, "InstallChart", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+func Test_UpgradePackage_Succeeds_PreparingTheNamespaceForThePodSecurityLevel(t *testing.T) {
+	chart := chartRequiring()
+	chart.PodSecurity = "privileged"
+	mockHelmService := &mocks.MockHelmService{}
+	mockHelmService.On("IsPackageInstalled", mock.Anything, mock.Anything, mock.Anything).Return(true)
+	mockHelmService.On("PullChart", mock.Anything, mock.Anything, mock.Anything).Return(chart, nil)
+	mockHelmService.On("AddRepo", mock.Anything, mock.Anything).Return(nil)
+	mockHelmService.On("PrepareNamespace", "bbe-networking", "", "privileged").Return(nil)
+	mockHelmService.On("UpgradeChart", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+	_, err := PackageService{}.UpgradePackage(models.ChartEntry{Name: "bbe-networking"}, nil, models.BbeConfig{}, mockHelmService, &mocks.MockUiService{}, false)
+
+	assert.NoError(t, err)
+	mockHelmService.AssertCalled(t, "PrepareNamespace", "bbe-networking", "", "privileged")
+}
+
+func Test_UpgradePackage_Fails_WhenTheChartCannotBePulled(t *testing.T) {
+	mockHelmService := &mocks.MockHelmService{}
+	mockHelmService.On("IsPackageInstalled", mock.Anything, mock.Anything, mock.Anything).Return(true)
+	mockHelmService.On("PullChart", mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New("Mock failed to pull"))
+
+	values, err := PackageService{}.UpgradePackage(models.ChartEntry{Name: "bbe-networking"}, nil, models.BbeConfig{}, mockHelmService, &mocks.MockUiService{}, false)
+
+	assert.Nil(t, values)
+	assert.EqualError(t, err, "Mock failed to pull")
+}
+
+func Test_InstallPackage_Succeeds_FromAChartFolder(t *testing.T) {
+	mockHelmService := &mocks.MockHelmService{}
+	mockHelmService.On("IsPackageInstalled", mock.Anything, mock.Anything, mock.Anything).Return(false)
+	mockHelmService.On("PullChart", "file:///charts/bbe-networking", "bbe-networking", "0.0.0-local").Return(chartRequiring(), nil)
+	mockHelmService.On("InstallChart", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+	chart := models.ChartEntry{Name: "bbe-networking", Version: "0.0.0-local", RepositoryUrl: "file:///charts/bbe-networking", RepositoryName: "local"}
+	_, err := PackageService{}.InstallPackage(chart, nil, models.BbeConfig{}, mockHelmService, &mocks.MockUiService{})
+
+	assert.NoError(t, err)
+	mockHelmService.AssertNotCalled(t, "AddRepo", mock.Anything, mock.Anything)
+	mockHelmService.AssertCalled(t, "InstallChart", "bbe-networking", "/charts/bbe-networking", "", "", "bbe-networking", "", map[string]interface{}(nil))
+}
+
+func Test_UpgradePackage_Succeeds_FromAChartFolder(t *testing.T) {
+	mockHelmService := &mocks.MockHelmService{}
+	mockHelmService.On("IsPackageInstalled", mock.Anything, mock.Anything, mock.Anything).Return(true)
+	mockHelmService.On("PullChart", mock.Anything, mock.Anything, mock.Anything).Return(chartRequiring(), nil)
+	mockHelmService.On("UpgradeChart", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+	chart := models.ChartEntry{Name: "bbe-networking", RepositoryUrl: "file:///charts/bbe-networking"}
+	_, err := PackageService{}.UpgradePackage(chart, nil, models.BbeConfig{}, mockHelmService, &mocks.MockUiService{}, false)
+
+	assert.NoError(t, err)
+	mockHelmService.AssertNotCalled(t, "AddRepo", mock.Anything, mock.Anything)
+	mockHelmService.AssertCalled(t, "UpgradeChart", "bbe-networking", "/charts/bbe-networking", "", "", "bbe-networking", "", map[string]interface{}(nil))
 }

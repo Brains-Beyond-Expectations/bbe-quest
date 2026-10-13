@@ -13,4 +13,10 @@ var BbeConfigFile = "bbe.yaml"
 var UserVolumes = []string{"longhorn"}
 // The Chart.yaml annotation listing what a chart needs in the cluster before it can be installed
 var PrerequisitesAnnotation = "bbe/prerequisites"
-var BbeLibraryUrl = "https://raw.githubusercontent.com/Brains-Beyond-Expectations/bbe-charts/main/library.yaml"
+// The Chart.yaml annotation setting the pod security level of the namespace a chart is installed in
+var PodSecurityAnnotation = "bbe/pod-security"
+const DefaultBbeLibraryUrl = "https://raw.githubusercontent.com/Brains-Beyond-Expectations/bbe-charts/main/library.yaml"
+
+// Where the package library is read from, a URL or a file. Set with --library or BBE_LIBRARY to test charts that
+// aren't released yet
+var BbeLibraryUrl = DefaultBbeLibraryUrl

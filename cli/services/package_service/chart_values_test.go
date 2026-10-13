@@ -99,15 +99,13 @@ func Test_resolveValues_Succeeds_AskingForEachMissingValue(t *testing.T) {
 	chart.Schema.Properties["replicas"] = models.HelmChartSchema{Type: "integer", Default: 2.0}
 	chart.Schema.Properties["mode"] = models.HelmChartSchema{Enum: []interface{}{"slow", "safe"}}
 	chart.Schema.Properties["debug"] = models.HelmChartSchema{Type: "boolean"}
-	mockHelmService := &mocks.MockHelmService{}
-	mockHelmService.On("PullChart", mock.Anything, mock.Anything, mock.Anything).Return(chart, nil)
 	mockUiService := &mocks.MockUiService{}
 	mockUiService.On("CreateInput", "bbe-networking: A required value (`service.ip`)", "").Return("192.168.1.240", nil)
 	mockUiService.On("CreateInput", "bbe-networking requires `replicas`", "2").Return("3", nil)
 	mockUiService.On("CreateSelect", "bbe-networking requires `mode`", []string{"slow", "safe"}).Return("safe", nil)
 	mockUiService.On("CreateSelect", "bbe-networking requires `debug`", []string{"true", "false"}).Return("false", nil)
 
-	values, err := resolveValues(networkingChart, nil, mockHelmService, mockUiService, true)
+	values, err := resolveValues(networkingChart, chart, nil, mockUiService, true)
 
 	assert.NoError(t, err)
 	assert.Equal(t, map[string]interface{}{
@@ -116,17 +114,14 @@ func Test_resolveValues_Succeeds_AskingForEachMissingValue(t *testing.T) {
 		"mode":     "safe",
 		"debug":    false,
 	}, values)
-	mockHelmService.AssertCalled(t, "PullChart", "https://example.com/charts", "bbe-networking", "0.3.0")
 }
 
 func Test_resolveValues_Succeeds_AskingAgainForAnInvalidValue(t *testing.T) {
-	mockHelmService := &mocks.MockHelmService{}
-	mockHelmService.On("PullChart", mock.Anything, mock.Anything, mock.Anything).Return(chartRequiring("ip"), nil)
 	mockUiService := &mocks.MockUiService{}
 	mockUiService.On("CreateInput", mock.Anything, mock.Anything).Return("  ", nil).Once()
 	mockUiService.On("CreateInput", mock.Anything, mock.Anything).Return(" 192.168.1.240 ", nil).Once()
 
-	values, err := resolveValues(networkingChart, nil, mockHelmService, mockUiService, true)
+	values, err := resolveValues(networkingChart, chartRequiring("ip"), nil, mockUiService, true)
 
 	assert.NoError(t, err)
 	assert.Equal(t, map[string]interface{}{"ip": "192.168.1.240"}, values)
@@ -134,8 +129,6 @@ func Test_resolveValues_Succeeds_AskingAgainForAnInvalidValue(t *testing.T) {
 }
 
 func Test_resolveValues_Succeeds_ReusingValuesStoredInBbeConfig(t *testing.T) {
-	mockHelmService := &mocks.MockHelmService{}
-	mockHelmService.On("PullChart", mock.Anything, mock.Anything, mock.Anything).Return(chartRequiring("service", "ip"), nil)
 	mockUiService := &mocks.MockUiService{}
 
 	// Round trip the values through yaml.v2 like bbe.yaml
@@ -143,7 +136,7 @@ func Test_resolveValues_Succeeds_ReusingValuesStoredInBbeConfig(t *testing.T) {
 	content, _ := yaml.Marshal(models.LocalPackage{Name: "bbe-networking", Values: map[string]interface{}{"service": map[string]interface{}{"ip": "192.168.1.240"}}})
 	yaml.Unmarshal(content, &pkg)
 
-	values, err := resolveValues(networkingChart, pkg.Values, mockHelmService, mockUiService, false)
+	values, err := resolveValues(networkingChart, chartRequiring("service", "ip"), pkg.Values, mockUiService, false)
 
 	assert.NoError(t, err)
 	assert.Equal(t, map[string]interface{}{"service": map[string]interface{}{"ip": "192.168.1.240"}}, values)
@@ -155,22 +148,18 @@ func Test_resolveValues_Fails_WhenAValueCannotBeEntered(t *testing.T) {
 		Required:   []string{"hosts"},
 		Properties: map[string]models.HelmChartSchema{"hosts": {Type: "array"}},
 	}}
-	mockHelmService := &mocks.MockHelmService{}
-	mockHelmService.On("PullChart", mock.Anything, mock.Anything, mock.Anything).Return(chart, nil)
 
-	values, err := resolveValues(networkingChart, nil, mockHelmService, &mocks.MockUiService{}, true)
+	values, err := resolveValues(networkingChart, chart, nil, &mocks.MockUiService{}, true)
 
 	assert.Nil(t, values)
 	assert.EqualError(t, err, "Package `bbe-networking` requires values that can't be entered here: `hosts`. Add them under `values` for the package in bbe.yaml")
 }
 
 func Test_resolveValues_Fails_WhenThePromptFails(t *testing.T) {
-	mockHelmService := &mocks.MockHelmService{}
-	mockHelmService.On("PullChart", mock.Anything, mock.Anything, mock.Anything).Return(chartRequiring("ip"), nil)
 	mockUiService := &mocks.MockUiService{}
 	mockUiService.On("CreateInput", mock.Anything, mock.Anything).Return("", errors.New("Mock prompt cancelled"))
 
-	values, err := resolveValues(networkingChart, nil, mockHelmService, mockUiService, true)
+	values, err := resolveValues(networkingChart, chartRequiring("ip"), nil, mockUiService, true)
 
 	assert.Nil(t, values)
 	assert.EqualError(t, err, "Mock prompt cancelled")

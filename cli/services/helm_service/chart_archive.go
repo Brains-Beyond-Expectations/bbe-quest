@@ -23,6 +23,9 @@ import (
 // The only files bbe needs from a chart, and from each chart it depends on
 var chartFiles = []string{"Chart.yaml", "values.yaml", "values.schema.json"}
 
+// The levels of the pod security standards, see https://kubernetes.io/docs/concepts/security/pod-security-standards
+var podSecurityLevels = []string{"privileged", "baseline", "restricted"}
+
 func readChartArchive(archivePath string) (*models.HelmChart, error) {
 	archive, err := os.Open(archivePath)
 	if err != nil {
@@ -82,6 +85,12 @@ func parseChart(files map[string][]byte, dir string) (*models.HelmChart, error) 
 		return nil, fmt.Errorf("Failed to parse the %s annotation in %s/Chart.yaml: %w", constants.PrerequisitesAnnotation, dir, err)
 	}
 	chart.Prerequisites = prerequisites
+
+	podSecurity := metadata.Annotations[constants.PodSecurityAnnotation]
+	if podSecurity != "" && !slices.Contains(podSecurityLevels, podSecurity) {
+		return nil, fmt.Errorf("The %s annotation in %s/Chart.yaml is `%s`, but has to be one of %s", constants.PodSecurityAnnotation, dir, podSecurity, strings.Join(podSecurityLevels, ", "))
+	}
+	chart.PodSecurity = podSecurity
 
 	if content, found := files[dir+"/values.yaml"]; found {
 		if err := yaml.Unmarshal(content, &chart.Values); err != nil {

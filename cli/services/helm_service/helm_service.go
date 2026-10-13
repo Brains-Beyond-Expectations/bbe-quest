@@ -2,6 +2,8 @@ package helm_service
 
 import (
 	"bytes"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -38,11 +40,12 @@ func (HelmService HelmService) AddRepo(repoName string, repoUrl string) error {
 }
 
 func (HelmService HelmService) InstallChart(pkgName string, chartName string, repoName string, version string, namespace string, context string, values map[string]interface{}) error {
-	cmd, err := helmCommandWithValues(values, "install", pkgName, fmt.Sprintf("%s/%s", repoName, chartName),
-		"--version", version,
+	// --replace installs over a release whose last install failed, which helm otherwise keeps the name for
+	cmd, err := helmCommandWithValues(values, append(append([]string{"install", pkgName}, chartArgs(chartName, repoName, version)...),
 		"--namespace", namespace,
 		"--create-namespace",
-		"--kube-context", context)
+		"--replace",
+		"--kube-context", context)...)
 	if err != nil {
 		return fmt.Errorf("Failed to install helm package `%s`: %w", pkgName, err)
 	}
@@ -60,11 +63,10 @@ func (HelmService HelmService) InstallChart(pkgName string, chartName string, re
 }
 
 func (HelmService HelmService) UpgradeChart(pkgName string, chartName string, repoName string, version string, namespace string, context string, values map[string]interface{}) error {
-	cmd, err := helmCommandWithValues(values, "upgrade", pkgName, fmt.Sprintf("%s/%s", repoName, chartName),
-		"--version", version,
+	cmd, err := helmCommandWithValues(values, append(append([]string{"upgrade", pkgName}, chartArgs(chartName, repoName, version)...),
 		"--namespace", namespace,
 		"--create-namespace",
-		"--kube-context", context)
+		"--kube-context", context)...)
 	if err != nil {
 		return fmt.Errorf("Failed to upgrade helm package `%s`: %w", pkgName, err)
 	}
@@ -77,7 +79,17 @@ func (HelmService HelmService) UpgradeChart(pkgName string, chartName string, re
 	return nil
 }
 
-// Downloads a chart without adding its repository, to read its values and schema
+// A chart in a repository is installed by name and version, a chart folder (no repository) as it is in the folder
+func chartArgs(chartName string, repoName string, version string) []string {
+	if repoName == "" {
+		return []string{chartName, "--dependency-update"}
+	}
+
+	return []string{fmt.Sprintf("%s/%s", repoName, chartName), "--version", version}
+}
+
+// Downloads a chart without adding its repository, or packages a chart folder (a file:// URL), to read its values
+// and schema
 func (HelmService HelmService) PullChart(repositoryUrl string, chartName string, version string) (*models.HelmChart, error) {
 	destination, err := osMkdirTemp("", "bbe-chart-")
 	if err != nil {
@@ -89,6 +101,11 @@ func (HelmService HelmService) PullChart(repositoryUrl string, chartName string,
 		"--repo", repositoryUrl,
 		"--version", version,
 		"--destination", destination)
+	if path, local := strings.CutPrefix(repositoryUrl, "file://"); local {
+		cmd = execCommand("helm", "package", path,
+			"--dependency-update",
+			"--destination", destination)
+	}
 	logger.Debug(fmt.Sprintf("Pulling helm chart `%s` with version `%s` from `%s`", chartName, version, repositoryUrl))
 
 	response, err := cmd.CombinedOutput()
@@ -122,16 +139,73 @@ func (HelmService HelmService) UninstallChart(pkgName string, namespace string, 
 	return nil
 }
 
+// A release whose first install failed doesn't count, as nothing in it can be relied on. One whose upgrade failed still runs the version before
 func (HelmService HelmService) IsPackageInstalled(pkgName string, namespace string, context string) bool {
 	cmd := execCommand("helm", "status", pkgName,
 		"--namespace", namespace,
 		"--kube-context", context,
+		"--output", "json",
 	)
-	if err := cmd.Run(); err != nil {
+	response, err := cmd.Output()
+	if err != nil {
+		return false
+	}
+
+	var release struct {
+		Version int `json:"version"`
+		Info    struct {
+			Status string `json:"status"`
+		} `json:"info"`
+	}
+	if err := json.Unmarshal(response, &release); err != nil {
+		return true
+	}
+
+	if release.Version == 1 && release.Info.Status == "failed" {
+		logger.Debug(fmt.Sprintf("Package `%s` failed to install before, so it counts as not installed", pkgName))
 		return false
 	}
 
 	return true
+}
+
+// The labels the pod security admission reads, see https://kubernetes.io/docs/concepts/security/pod-security-admission
+var podSecurityModes = []string{"enforce", "audit", "warn"}
+
+// Creates the namespace with the pod security level a chart needs, as helm's --create-namespace can't label it
+func (HelmService HelmService) PrepareNamespace(namespace string, context string, podSecurity string) error {
+	logger.Debug(fmt.Sprintf("Setting the pod security level of namespace `%s` to `%s`", namespace, podSecurity))
+
+	response, err := kubectl(context, "create", "namespace", namespace)
+	if err != nil && !strings.Contains(string(response), "AlreadyExists") {
+		return fmt.Errorf("Failed to create namespace `%s`: %w", namespace, err)
+	}
+
+	args := []string{"label", "namespace", namespace, "--overwrite"}
+	for _, mode := range podSecurityModes {
+		args = append(args, fmt.Sprintf("pod-security.kubernetes.io/%s=%s", mode, podSecurity))
+	}
+	if _, err := kubectl(context, args...); err != nil {
+		return fmt.Errorf("Failed to set the pod security level of namespace `%s`: %w", namespace, err)
+	}
+
+	return nil
+}
+
+func kubectl(context string, args ...string) ([]byte, error) {
+	cmd := execCommand("kubectl", append(args, "--context", context)...)
+	logger.Debug(fmt.Sprintf("Command: %s", cmd.String()))
+
+	response, err := cmd.CombinedOutput()
+	logger.Debug(fmt.Sprintf("Response: %s", string(response)))
+	if errors.Is(err, exec.ErrNotFound) {
+		return response, errors.New("kubectl is needed to prepare the namespace for this package, please install it")
+	}
+	if err != nil {
+		return response, fmt.Errorf("%w%s", err, helmOutput(response))
+	}
+
+	return response, nil
 }
 
 func (HelmService HelmService) updateRepo(repoName string) error {

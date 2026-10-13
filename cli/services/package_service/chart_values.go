@@ -18,13 +18,8 @@ import (
 )
 
 // Returns `values` completed with anything the chart's schemas require that isn't set yet, asking the user for it
-func resolveValues(chart models.ChartEntry, values map[string]interface{}, helmService interfaces.HelmServiceInterface, uiService interfaces.UiServiceInterface, interactive bool) (map[string]interface{}, error) {
+func resolveValues(chart models.ChartEntry, helmChart *models.HelmChart, values map[string]interface{}, uiService interfaces.UiServiceInterface, interactive bool) (map[string]interface{}, error) {
 	resolved := normalizeValues(values)
-
-	helmChart, err := helmService.PullChart(chart.RepositoryUrl, chart.Name, chart.Version)
-	if err != nil {
-		return nil, err
-	}
 
 	missing := findMissingValues(helmChart, resolved)
 	if len(missing) == 0 {
