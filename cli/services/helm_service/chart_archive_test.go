@@ -252,3 +252,109 @@ func Test_readChartArchive_Fails_WithAnUnknownPodSecurityLevel(t *testing.T) {
 	assert.Nil(t, chart)
 	assert.EqualError(t, err, "The bbe/pod-security annotation in bbe-networking/Chart.yaml is `host`, but has to be one of privileged, baseline, restricted")
 }
+
+func Test_readChartArchive_Succeeds_ReadingSettings(t *testing.T) {
+	archive := filepath.Join(t.TempDir(), "bbe-media-1.0.0.tgz")
+	writeChartArchive(t, archive, map[string]string{
+		"bbe-media/Chart.yaml": `name: bbe-media
+annotations:
+  bbe/settings: |
+    - name: indexers
+      description: The indexers Prowlarr searches
+      values: bbe.media.prowlarr.indexers
+      secret: bbe-media-indexers
+      catalog:
+        type: prowlarr-indexers
+        service: bbe-media-prowlarr
+        port: 9696
+        apiKey:
+          secret: bbe-media-api-keys
+          key: prowlarr
+`,
+	})
+
+	chart, err := readChartArchive(archive)
+
+	assert.NoError(t, err)
+	assert.Equal(t, []models.ChartSetting{{
+		Name:        "indexers",
+		Description: "The indexers Prowlarr searches",
+		Values:      "bbe.media.prowlarr.indexers",
+		Secret:      "bbe-media-indexers",
+		Catalog: &models.SettingCatalog{
+			Type:    "prowlarr-indexers",
+			Service: "bbe-media-prowlarr",
+			Port:    9696,
+			ApiKey:  &models.SecretKeyRef{Secret: "bbe-media-api-keys", Key: "prowlarr"},
+		},
+	}}, chart.Settings)
+}
+
+func Test_readChartArchive_Fails_WithInvalidSettings(t *testing.T) {
+	catalog := "\n  catalog: {type: prowlarr-indexers, service: prowlarr, port: 9696, apiKey: {secret: keys, key: prowlarr}}"
+	cases := map[string]string{
+		"- name: [indexers":                                                     "Failed to parse the bbe/settings annotation in bbe-media/Chart.yaml",
+		"- values: a.b" + catalog:                                               "every setting needs a name and the path of its values",
+		"- name: indexers\n  values: a.b":                                       "setting `indexers` needs a catalog to add entries from",
+		"- name: indexers\n  values: a.b\n  catalog: {type: shop}":              "setting `indexers` has catalog type `shop`, which bbe doesn't know",
+		"- name: indexers\n  values: a.b\n  catalog: {type: prowlarr-indexers}": "setting `indexers` needs the catalog's service, port and API key",
+	}
+
+	for annotation, expected := range cases {
+		archive := filepath.Join(t.TempDir(), "bbe-media-1.0.0.tgz")
+		indented := "    " + strings.ReplaceAll(annotation, "\n", "\n    ")
+		writeChartArchive(t, archive, map[string]string{"bbe-media/Chart.yaml": "name: bbe-media\nannotations:\n  bbe/settings: |\n" + indented + "\n"})
+
+		chart, err := readChartArchive(archive)
+
+		assert.Nil(t, chart, annotation)
+		assert.ErrorContains(t, err, expected, annotation)
+	}
+}
+
+func Test_readChartArchive_Succeeds_ReadingWhatUninstallingDeletes(t *testing.T) {
+	archive := filepath.Join(t.TempDir(), "bbe-storage-1.0.0.tgz")
+	writeChartArchive(t, archive, map[string]string{
+		"bbe-storage/Chart.yaml": `name: bbe-storage
+annotations:
+  bbe/uninstall: |
+    namespaces:
+      - longhorn-system
+    patches:
+      - resource: settings.longhorn.io
+        namespace: longhorn-system
+        name: deleting-confirmation-flag
+        patch: '{"value": "true"}'
+    keeps:
+      - Longhorn's directory on each node
+`,
+	})
+
+	chart, err := readChartArchive(archive)
+
+	assert.NoError(t, err)
+	assert.Equal(t, &models.ChartUninstall{
+		Namespaces: []string{"longhorn-system"},
+		Patches:    []models.UninstallPatch{{Resource: "settings.longhorn.io", Namespace: "longhorn-system", Name: "deleting-confirmation-flag", Patch: `{"value": "true"}`}},
+		Keeps:      []string{"Longhorn's directory on each node"},
+	}, chart.Uninstall)
+}
+
+func Test_readChartArchive_Fails_WithAnInvalidUninstall(t *testing.T) {
+	cases := map[string]string{
+		"namespaces: [longhorn":                                  "Failed to parse the bbe/uninstall annotation in bbe-storage/Chart.yaml",
+		"namespaces: [Longhorn_System]":                          "`Longhorn_System` isn't a namespace name",
+		"patches: [{resource: settings.longhorn.io, name: flag}]": "every patch needs a resource, a name and a namespace",
+		"patches: [{resource: settings, name: flag, namespace: longhorn-system, patch: 'value: true'}]": "the patch to settings `flag` isn't JSON",
+	}
+
+	for annotation, expected := range cases {
+		archive := filepath.Join(t.TempDir(), "bbe-storage-1.0.0.tgz")
+		writeChartArchive(t, archive, map[string]string{"bbe-storage/Chart.yaml": "name: bbe-storage\nannotations:\n  bbe/uninstall: |\n    " + annotation + "\n"})
+
+		chart, err := readChartArchive(archive)
+
+		assert.Nil(t, chart, annotation)
+		assert.ErrorContains(t, err, expected, annotation)
+	}
+}

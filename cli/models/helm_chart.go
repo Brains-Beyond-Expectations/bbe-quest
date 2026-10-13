@@ -8,6 +8,8 @@ type HelmChart struct {
 	Dependencies  []HelmChartDependency
 	Prerequisites []ChartPrerequisite
 	PodSecurity   string // A pod security standard level, empty to keep the cluster's default
+	Settings      []ChartSetting
+	Uninstall     *ChartUninstall
 }
 
 type HelmChartMetadata struct {

@@ -472,3 +472,16 @@ func Test_Helm_Service_Install_Chart_From_A_Repository(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, []string{"install", "bbe-networking", "bbe/bbe-networking", "--version", "0.3.0", "--namespace", "bbe-networking", "--create-namespace", "--replace", "--kube-context", "context"}, receivedArgs)
 }
+
+func Test_Helm_Service_UnInstall_Waits_For_The_Release(t *testing.T) {
+	var receivedArgs []string
+	execCommand = func(_ string, args ...string) *exec.Cmd {
+		receivedArgs = args
+		return exec.Command("true")
+	}
+
+	err := HelmService{}.UninstallChart("bbe-storage", "bbe-storage", "context")
+
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"uninstall", "bbe-storage", "--namespace", "bbe-storage", "--wait", "--timeout", "10m", "--kube-context", "context"}, receivedArgs)
+}

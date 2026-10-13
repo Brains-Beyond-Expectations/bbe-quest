@@ -92,6 +92,18 @@ func parseChart(files map[string][]byte, dir string) (*models.HelmChart, error) 
 	}
 	chart.PodSecurity = podSecurity
 
+	settings, err := parseSettings(metadata.Annotations[constants.SettingsAnnotation])
+	if err != nil {
+		return nil, fmt.Errorf("Failed to parse the %s annotation in %s/Chart.yaml: %w", constants.SettingsAnnotation, dir, err)
+	}
+	chart.Settings = settings
+
+	uninstall, err := parseUninstall(metadata.Annotations[constants.UninstallAnnotation])
+	if err != nil {
+		return nil, fmt.Errorf("Failed to parse the %s annotation in %s/Chart.yaml: %w", constants.UninstallAnnotation, dir, err)
+	}
+	chart.Uninstall = uninstall
+
 	if content, found := files[dir+"/values.yaml"]; found {
 		if err := yaml.Unmarshal(content, &chart.Values); err != nil {
 			return nil, fmt.Errorf("Failed to parse %s/values.yaml: %w", dir, err)
@@ -185,4 +197,65 @@ func parsePrerequisites(annotation string) ([]models.ChartPrerequisite, error) {
 	}
 
 	return prerequisites, nil
+}
+
+// The catalogs bbe knows how to read
+var settingCatalogTypes = []string{"prowlarr-indexers"}
+
+func parseSettings(annotation string) ([]models.ChartSetting, error) {
+	if strings.TrimSpace(annotation) == "" {
+		return nil, nil
+	}
+
+	var settings []models.ChartSetting
+	if err := yaml.Unmarshal([]byte(annotation), &settings); err != nil {
+		return nil, err
+	}
+
+	for _, setting := range settings {
+		if setting.Name == "" || setting.Values == "" {
+			return nil, errors.New("every setting needs a name and the path of its values")
+		}
+		if setting.Catalog == nil {
+			return nil, fmt.Errorf("setting `%s` needs a catalog to add entries from", setting.Name)
+		}
+		if !slices.Contains(settingCatalogTypes, setting.Catalog.Type) {
+			return nil, fmt.Errorf("setting `%s` has catalog type `%s`, which bbe doesn't know", setting.Name, setting.Catalog.Type)
+		}
+		if setting.Catalog.Service == "" || setting.Catalog.Port == 0 || setting.Catalog.ApiKey == nil || setting.Catalog.ApiKey.Secret == "" || setting.Catalog.ApiKey.Key == "" {
+			return nil, fmt.Errorf("setting `%s` needs the catalog's service, port and API key", setting.Name)
+		}
+	}
+
+	return settings, nil
+}
+
+// A namespace name, which Kubernetes limits to a DNS label
+var namespaceName = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
+
+func parseUninstall(annotation string) (*models.ChartUninstall, error) {
+	if strings.TrimSpace(annotation) == "" {
+		return nil, nil
+	}
+
+	var uninstall models.ChartUninstall
+	if err := yaml.Unmarshal([]byte(annotation), &uninstall); err != nil {
+		return nil, err
+	}
+
+	for _, namespace := range uninstall.Namespaces {
+		if !namespaceName.MatchString(namespace) {
+			return nil, fmt.Errorf("`%s` isn't a namespace name", namespace)
+		}
+	}
+	for _, patch := range uninstall.Patches {
+		if patch.Resource == "" || patch.Name == "" || patch.Namespace == "" {
+			return nil, errors.New("every patch needs a resource, a name and a namespace")
+		}
+		if !json.Valid([]byte(patch.Patch)) {
+			return nil, fmt.Errorf("the patch to %s `%s` isn't JSON", patch.Resource, patch.Name)
+		}
+	}
+
+	return &uninstall, nil
 }

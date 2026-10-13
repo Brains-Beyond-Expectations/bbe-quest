@@ -236,7 +236,7 @@ func Test_installCommand_Succeeds_InstallingAPrerequisiteFirstAndRecordingIt(t *
 	prerequisiteService.On("Check", storageNeeded, testCluster).Return([]string{"the `longhorn` storage class"}, nil)
 	packageService.On("InstallPackage", mock.Anything, mock.Anything).Return(nil, nil)
 
-	err := installCommand(helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService)
+	err := installCommand(helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService, &mocks.MockKubernetesService{})
 
 	assert.NoError(t, err)
 	assert.Equal(t, storagePackage, packageService.Calls[indexOfCall(packageService.Calls, "InstallPackage", 0)].Arguments[0])
@@ -266,7 +266,7 @@ func Test_installCommand_Fails_WithoutAPrerequisite_ButRecordsWhatWasInstalled(t
 	prerequisiteService.On("Check", storageNeeded, testCluster).Return([]string{"the `longhorn` storage class"}, nil)
 	packageService.On("InstallPackage", otherPackage, mock.Anything).Return(nil, nil)
 
-	err := installCommand(helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService)
+	err := installCommand(helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService, &mocks.MockKubernetesService{})
 
 	assert.ErrorContains(t, err, "Package `bbe-media` can't be installed without storage")
 	packageService.AssertNotCalled(t, "InstallPackage", mediaPackage, mock.Anything)
