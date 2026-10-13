@@ -413,6 +413,21 @@ func Test_GetDisks_Succeeds_ReturnsOnlyInstallableDisks(t *testing.T) {
 	assert.Equal(t, "usb", disks[1].Spec.Transport)
 }
 
+// talosctl warns on stderr when it's newer than the node, which isn't part of the YAML
+func Test_GetDisks_Succeeds_IgnoringTalosctlWarnings(t *testing.T) {
+	execCommand = func(_ string, _ ...string) *exec.Cmd {
+		return exec.Command("sh", "-c", `echo 'WARNING: 192.168.1.50: server version 1.14.1 is older than client version 1.14.2' >&2; printf '%s' "$0"`, disksOutput)
+	}
+
+	talosService := TalosService{}
+	disks, err := talosService.GetDisks("192.168.1.50")
+
+	assert.Nil(t, err)
+	assert.Len(t, disks, 2)
+
+	execCommand = exec.Command
+}
+
 func Test_GetDisks_Succeeds_WithNoInstallableDisks(t *testing.T) {
 	execCommand = func(_ string, _ ...string) *exec.Cmd {
 		return exec.Command("echo", "spec:\n    dev_path: /dev/loop0\n    readonly: true\n")
