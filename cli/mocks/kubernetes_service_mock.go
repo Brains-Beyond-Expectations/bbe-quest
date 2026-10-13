@@ -1,6 +1,9 @@
 package mocks
 
-import "github.com/stretchr/testify/mock"
+import (
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/models"
+	"github.com/stretchr/testify/mock"
+)
 
 type MockKubernetesService struct {
 	mock.Mock
@@ -24,5 +27,21 @@ func (m *MockKubernetesService) SetSecretValues(context string, namespace string
 
 func (m *MockKubernetesService) RemoveSecretValues(context string, namespace string, secret string, keys []string) error {
 	args := m.Called(context, namespace, secret, keys)
+	return args.Error(0)
+}
+
+func (m *MockKubernetesService) NamespaceVolumes(context string, namespace string) ([]models.NamespaceVolume, bool, error) {
+	args := m.Called(context, namespace)
+	volumes, _ := args.Get(0).([]models.NamespaceVolume)
+	return volumes, args.Bool(1), args.Error(2)
+}
+
+func (m *MockKubernetesService) Patch(context string, namespace string, resource string, name string, patch string) error {
+	args := m.Called(context, namespace, resource, name, patch)
+	return args.Error(0)
+}
+
+func (m *MockKubernetesService) DeleteNamespace(context string, namespace string) error {
+	args := m.Called(context, namespace)
 	return args.Error(0)
 }

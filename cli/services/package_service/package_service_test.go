@@ -214,52 +214,6 @@ func Test_UpgradePackage_Fails_WhenPackageNotInstalled(t *testing.T) {
 	assert.Error(t, err)
 }
 
-func Test_UninstallPackage_Fails_WhenHelmFails(t *testing.T) {
-	mockErrorMessage := "Mockfailed uninstalling repo"
-	mockHelmService := &mocks.MockHelmService{}
-	mockHelmService.On("IsPackageInstalled", mock.Anything, mock.Anything, mock.Anything).Return(true)
-	mockHelmService.On("UninstallChart", mock.Anything, mock.Anything, mock.Anything).Return(errors.New(mockErrorMessage))
-
-	packagesService := PackageService{}
-
-	bbeConfig := models.BbeConfig{}
-	bbeConfig.Bbe.Cluster.Context = "test-context"
-	err := packagesService.UninstallPackage(models.LocalPackage{Name: "ingress-nginx", Version: "4.12.0"}, bbeConfig, mockHelmService)
-
-	// Assert an error occurred
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), mockErrorMessage)
-}
-
-func Test_UninstallPackage_Succeeds(t *testing.T) {
-	mockHelmService := &mocks.MockHelmService{}
-	mockHelmService.On("IsPackageInstalled", mock.Anything, mock.Anything, mock.Anything).Return(true)
-	mockHelmService.On("UninstallChart", mock.Anything, mock.Anything, mock.Anything).Return(nil)
-
-	packagesService := PackageService{}
-
-	bbeConfig := models.BbeConfig{}
-	bbeConfig.Bbe.Cluster.Context = "test-context"
-	err := packagesService.UninstallPackage(models.LocalPackage{Name: "ingress-nginx", Version: "4.12.0"}, bbeConfig, mockHelmService)
-
-	// Assert an error occurred
-	assert.NoError(t, err)
-}
-
-func Test_UninstallPackage_Fails_WhenPackageNotInstalled(t *testing.T) {
-	mockHelmService := &mocks.MockHelmService{}
-	mockHelmService.On("IsPackageInstalled", mock.Anything, mock.Anything, mock.Anything).Return(false)
-
-	packagesService := PackageService{}
-
-	bbeConfig := models.BbeConfig{}
-	bbeConfig.Bbe.Cluster.Context = "test-context"
-	err := packagesService.UninstallPackage(models.LocalPackage{Name: "ingress-nginx", Version: "4.12.0"}, bbeConfig, mockHelmService)
-
-	// Assert an error occurred
-	assert.Error(t, err)
-}
-
 func Test_getRemoteLibrary_Fails_WhenTheLibraryFileIsMissing(t *testing.T) {
 	originalUrl := constants.BbeLibraryUrl
 	constants.BbeLibraryUrl = "thisIsNotReal"

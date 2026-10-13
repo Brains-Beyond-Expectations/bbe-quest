@@ -225,12 +225,3 @@ func (packageService PackageService) GetPrerequisites(chart models.ChartEntry, h
 
 	return helmChart.Prerequisites, nil
 }
-
-func (packageService PackageService) UninstallPackage(chart models.LocalPackage, bbeConfig models.BbeConfig, helmService interfaces.HelmServiceInterface) error {
-	if !helmService.IsPackageInstalled(chart.Name, chart.Name, bbeConfig.Bbe.Cluster.Context) {
-		logger.Debug(fmt.Sprintf("Package `%s` not installed", chart.Name))
-		return fmt.Errorf("Package `%s` not installed", chart.Name)
-	}
-
-	return helmService.UninstallChart(chart.Name, chart.Name, bbeConfig.Bbe.Cluster.Context)
-}
