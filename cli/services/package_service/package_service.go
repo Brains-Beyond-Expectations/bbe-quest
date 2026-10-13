@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -18,23 +20,17 @@ import (
 type PackageService struct{}
 
 var ioReadAll = io.ReadAll
+var osReadFile = os.ReadFile
 
 func getRemoteLibrary() (*models.LibraryEntry, error) {
-	client := &http.Client{
-		Timeout: 10 * time.Second,
+	source := constants.BbeLibraryUrl
+	if source != constants.DefaultBbeLibraryUrl {
+		logger.Warning(fmt.Sprintf("Using the package library from %s instead of the released one", source))
 	}
 
-	// Fetch the library.yaml file from remote
-	resp, err := client.Get(constants.BbeLibraryUrl)
+	body, err := readLibrary(source)
 	if err != nil {
-		logger.Debug(fmt.Sprintf("Error fetching library.yaml: %v", err))
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	body, err := ioReadAll(resp.Body)
-	if err != nil {
-		logger.Debug(fmt.Sprintf("Error reading response body: %v", err))
+		logger.Debug(fmt.Sprintf("Error reading library.yaml: %v", err))
 		return nil, err
 	}
 
@@ -46,11 +42,49 @@ func getRemoteLibrary() (*models.LibraryEntry, error) {
 
 	for _, revision := range library.Library {
 		if isRevisionSupported(revision.MinBbeCli, constants.Version) {
+			resolveLocalCharts(&revision, source)
 			return &revision, nil
 		}
 	}
 
 	return nil, fmt.Errorf("No revision found for bbe-cli version %s", constants.Version)
+}
+
+// The library is a URL, or a file on disk when testing charts that aren't released yet
+func readLibrary(source string) ([]byte, error) {
+	if !strings.HasPrefix(source, "http://") && !strings.HasPrefix(source, "https://") {
+		return osReadFile(strings.TrimPrefix(source, "file://"))
+	}
+
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
+	resp, err := client.Get(source)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Failed to fetch the package library from %s: %s", source, resp.Status)
+	}
+
+	return ioReadAll(resp.Body)
+}
+
+// Chart folders in a library on disk are relative to the library, so it can sit next to the charts
+func resolveLocalCharts(revision *models.LibraryEntry, source string) {
+	if strings.HasPrefix(source, "http://") || strings.HasPrefix(source, "https://") {
+		return
+	}
+
+	for i, chart := range revision.Charts {
+		path, local := chart.LocalPath()
+		if local && !filepath.IsAbs(path) {
+			revision.Charts[i].RepositoryUrl = "file://" + filepath.Join(filepath.Dir(strings.TrimPrefix(source, "file://")), path)
+		}
+	}
 }
 
 // Development builds support every revision, as do revisions without a minimum version
@@ -105,19 +139,16 @@ func (packageService PackageService) InstallPackage(chart models.ChartEntry, val
 		return nil, err
 	}
 
-	logger.Debug(fmt.Sprintf("Package `%s` not installed, adding helm repo...", chart.Name))
-	response := helmService.AddRepo(chart.RepositoryName, chart.RepositoryUrl)
-	logger.Debug(fmt.Sprintf("Helm repo added: %v", response))
-
-	if response != nil {
-		return nil, response
+	chartName, repoName, version, err := chartSource(chart, helmService)
+	if err != nil {
+		return nil, err
 	}
 
 	if err := prepareNamespace(chart, helmChart, bbeConfig, helmService); err != nil {
 		return nil, err
 	}
 
-	err = helmService.InstallChart(chart.Name, chart.Name, chart.RepositoryName, chart.Version, chart.Name, bbeConfig.Bbe.Cluster.Context, values)
+	err = helmService.InstallChart(chart.Name, chartName, repoName, version, chart.Name, bbeConfig.Bbe.Cluster.Context, values)
 	if err != nil {
 		return nil, err
 	}
@@ -142,10 +173,9 @@ func (packageService PackageService) UpgradePackage(chart models.ChartEntry, val
 		return nil, err
 	}
 
-	response := helmService.AddRepo(chart.RepositoryName, chart.RepositoryUrl)
-
-	if response != nil {
-		return nil, response
+	chartName, repoName, version, err := chartSource(chart, helmService)
+	if err != nil {
+		return nil, err
 	}
 
 	// Also for packages installed before their chart asked for a pod security level
@@ -153,12 +183,28 @@ func (packageService PackageService) UpgradePackage(chart models.ChartEntry, val
 		return nil, err
 	}
 
-	err = helmService.UpgradeChart(chart.Name, chart.Name, chart.RepositoryName, chart.Version, chart.Name, bbeConfig.Bbe.Cluster.Context, values)
+	err = helmService.UpgradeChart(chart.Name, chartName, repoName, version, chart.Name, bbeConfig.Bbe.Cluster.Context, values)
 	if err != nil {
 		return nil, err
 	}
 
 	return values, nil
+}
+
+// Returns what helm installs the package from: a chart in a repository, which is added first, or a chart folder,
+// which has no repository or version
+func chartSource(chart models.ChartEntry, helmService interfaces.HelmServiceInterface) (chartName string, repoName string, version string, err error) {
+	if path, local := chart.LocalPath(); local {
+		logger.Debug(fmt.Sprintf("Package `%s` is installed from the folder %s", chart.Name, path))
+		return path, "", "", nil
+	}
+
+	logger.Debug(fmt.Sprintf("Adding helm repo `%s` for package `%s`", chart.RepositoryName, chart.Name))
+	if err := helmService.AddRepo(chart.RepositoryName, chart.RepositoryUrl); err != nil {
+		return "", "", "", err
+	}
+
+	return chart.Name, chart.RepositoryName, chart.Version, nil
 }
 
 // Charts whose pods need more than the cluster allows by default say so in their Chart.yaml

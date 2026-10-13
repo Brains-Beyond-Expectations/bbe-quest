@@ -424,3 +424,51 @@ func Test_Helm_Service_Fails_Prepare_Namespace_Without_Kubectl(t *testing.T) {
 
 	assert.EqualError(t, err, "Failed to create namespace `bbe-networking`: kubectl is needed to prepare the namespace for this package, please install it")
 }
+
+func Test_Helm_Service_Succeeds_Pull_Chart_From_A_Folder(t *testing.T) {
+	var receivedArgs []string
+	execCommand = func(_ string, args ...string) *exec.Cmd {
+		receivedArgs = args
+		destination := args[slices.Index(args, "--destination")+1]
+		writeChartArchive(t, filepath.Join(destination, "bbe-networking-0.3.0.tgz"), map[string]string{
+			"bbe-networking/Chart.yaml": "name: bbe-networking\n",
+		})
+		return exec.Command("true")
+	}
+
+	chart, err := HelmService{}.PullChart("file:///charts/bbe-networking", "bbe-networking", "0.0.0-local")
+
+	assert.NoError(t, err)
+	assert.Equal(t, "bbe-networking", chart.Name)
+	destination := receivedArgs[len(receivedArgs)-1]
+	assert.Equal(t, []string{"package", "/charts/bbe-networking", "--dependency-update", "--destination", destination}, receivedArgs)
+}
+
+func Test_Helm_Service_Install_And_Upgrade_Chart_From_A_Folder(t *testing.T) {
+	var receivedArgs [][]string
+	execCommand = func(_ string, args ...string) *exec.Cmd {
+		receivedArgs = append(receivedArgs, args)
+		return exec.Command("true")
+	}
+
+	installErr := HelmService{}.InstallChart("bbe-networking", "/charts/bbe-networking", "", "", "bbe-networking", "context", nil)
+	upgradeErr := HelmService{}.UpgradeChart("bbe-networking", "/charts/bbe-networking", "", "", "bbe-networking", "context", nil)
+
+	assert.NoError(t, installErr)
+	assert.NoError(t, upgradeErr)
+	assert.Equal(t, []string{"install", "bbe-networking", "/charts/bbe-networking", "--dependency-update", "--namespace", "bbe-networking", "--create-namespace", "--replace", "--kube-context", "context"}, receivedArgs[0])
+	assert.Equal(t, []string{"upgrade", "bbe-networking", "/charts/bbe-networking", "--dependency-update", "--namespace", "bbe-networking", "--create-namespace", "--kube-context", "context"}, receivedArgs[1])
+}
+
+func Test_Helm_Service_Install_Chart_From_A_Repository(t *testing.T) {
+	var receivedArgs []string
+	execCommand = func(_ string, args ...string) *exec.Cmd {
+		receivedArgs = args
+		return exec.Command("true")
+	}
+
+	err := HelmService{}.InstallChart("bbe-networking", "bbe-networking", "bbe", "0.3.0", "bbe-networking", "context", nil)
+
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"install", "bbe-networking", "bbe/bbe-networking", "--version", "0.3.0", "--namespace", "bbe-networking", "--create-namespace", "--replace", "--kube-context", "context"}, receivedArgs)
+}

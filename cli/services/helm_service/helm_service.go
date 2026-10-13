@@ -41,12 +41,11 @@ func (HelmService HelmService) AddRepo(repoName string, repoUrl string) error {
 
 func (HelmService HelmService) InstallChart(pkgName string, chartName string, repoName string, version string, namespace string, context string, values map[string]interface{}) error {
 	// --replace installs over a release whose last install failed, which helm otherwise keeps the name for
-	cmd, err := helmCommandWithValues(values, "install", pkgName, fmt.Sprintf("%s/%s", repoName, chartName),
-		"--version", version,
+	cmd, err := helmCommandWithValues(values, append(append([]string{"install", pkgName}, chartArgs(chartName, repoName, version)...),
 		"--namespace", namespace,
 		"--create-namespace",
 		"--replace",
-		"--kube-context", context)
+		"--kube-context", context)...)
 	if err != nil {
 		return fmt.Errorf("Failed to install helm package `%s`: %w", pkgName, err)
 	}
@@ -64,11 +63,10 @@ func (HelmService HelmService) InstallChart(pkgName string, chartName string, re
 }
 
 func (HelmService HelmService) UpgradeChart(pkgName string, chartName string, repoName string, version string, namespace string, context string, values map[string]interface{}) error {
-	cmd, err := helmCommandWithValues(values, "upgrade", pkgName, fmt.Sprintf("%s/%s", repoName, chartName),
-		"--version", version,
+	cmd, err := helmCommandWithValues(values, append(append([]string{"upgrade", pkgName}, chartArgs(chartName, repoName, version)...),
 		"--namespace", namespace,
 		"--create-namespace",
-		"--kube-context", context)
+		"--kube-context", context)...)
 	if err != nil {
 		return fmt.Errorf("Failed to upgrade helm package `%s`: %w", pkgName, err)
 	}
@@ -81,7 +79,17 @@ func (HelmService HelmService) UpgradeChart(pkgName string, chartName string, re
 	return nil
 }
 
-// Downloads a chart without adding its repository, to read its values and schema
+// A chart in a repository is installed by name and version, a chart folder (no repository) as it is in the folder
+func chartArgs(chartName string, repoName string, version string) []string {
+	if repoName == "" {
+		return []string{chartName, "--dependency-update"}
+	}
+
+	return []string{fmt.Sprintf("%s/%s", repoName, chartName), "--version", version}
+}
+
+// Downloads a chart without adding its repository, or packages a chart folder (a file:// URL), to read its values
+// and schema
 func (HelmService HelmService) PullChart(repositoryUrl string, chartName string, version string) (*models.HelmChart, error) {
 	destination, err := osMkdirTemp("", "bbe-chart-")
 	if err != nil {
@@ -93,6 +101,11 @@ func (HelmService HelmService) PullChart(repositoryUrl string, chartName string,
 		"--repo", repositoryUrl,
 		"--version", version,
 		"--destination", destination)
+	if path, local := strings.CutPrefix(repositoryUrl, "file://"); local {
+		cmd = execCommand("helm", "package", path,
+			"--dependency-update",
+			"--destination", destination)
+	}
 	logger.Debug(fmt.Sprintf("Pulling helm chart `%s` with version `%s` from `%s`", chartName, version, repositoryUrl))
 
 	response, err := cmd.CombinedOutput()

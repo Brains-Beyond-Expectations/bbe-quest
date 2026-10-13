@@ -3,6 +3,7 @@ package cmd
 import (
 	"os"
 
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/constants"
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/misc/logger"
 	"github.com/spf13/cobra"
 )
@@ -14,6 +15,19 @@ var rootCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 
 	},
+}
+
+func init() {
+	rootCmd.PersistentFlags().StringVar(&constants.BbeLibraryUrl, "library", defaultLibrary(),
+		"a URL or file to read the package library from, to test charts that aren't released yet (or set BBE_LIBRARY)")
+}
+
+func defaultLibrary() string {
+	if library := os.Getenv("BBE_LIBRARY"); library != "" {
+		return library
+	}
+
+	return constants.DefaultBbeLibraryUrl
 }
 
 func Execute() {
