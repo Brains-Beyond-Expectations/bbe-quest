@@ -10,6 +10,7 @@ type HelmChart struct {
 	PodSecurity   string // A pod security standard level, empty to keep the cluster's default
 	Settings      []ChartSetting
 	Uninstall     *ChartUninstall
+	Crds          []string // The manifests in the chart's crds/ folder, which helm only installs on a first install
 }
 
 type HelmChartMetadata struct {

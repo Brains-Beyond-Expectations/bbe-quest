@@ -126,6 +126,17 @@ func coalesceValues(chart *models.HelmChart, values map[string]interface{}) map[
 	return coalesced
 }
 
+// The CRDs of the chart and of the charts it depends on that are enabled, as helm collects them, from coalesced values
+func chartCrds(chart *models.HelmChart, values map[string]interface{}) []string {
+	crds := slices.Clone(chart.Crds)
+	for _, dependency := range enabledDependencies(chart, values) {
+		dependencyValues, _ := values[dependencyKey(dependency)].(map[string]interface{})
+		crds = append(crds, chartCrds(dependency.Chart, dependencyValues)...)
+	}
+
+	return crds
+}
+
 func mergeValues(base map[string]interface{}, override map[string]interface{}) map[string]interface{} {
 	merged := maps.Clone(base)
 	if merged == nil {

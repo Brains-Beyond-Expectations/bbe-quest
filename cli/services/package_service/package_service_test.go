@@ -607,3 +607,90 @@ func Test_UpgradePackage_Succeeds_FromAChartFolder(t *testing.T) {
 	mockHelmService.AssertNotCalled(t, "AddRepo", mock.Anything, mock.Anything)
 	mockHelmService.AssertCalled(t, "UpgradeChart", "bbe-networking", "/charts/bbe-networking", "", "", "bbe-networking", "", map[string]interface{}(nil))
 }
+
+// A chart with CRDs of its own, in a dependency that's enabled, and in one its values turn off
+func chartWithCrds() *models.HelmChart {
+	return &models.HelmChart{
+		Name:   "bbe-networking",
+		Crds:   []string{"kind: CustomResourceDefinition # parent"},
+		Values: map[string]interface{}{"disabled": map[string]interface{}{"enabled": false}},
+		Dependencies: []models.HelmChartDependency{
+			{Name: "traefik", Chart: &models.HelmChart{Name: "traefik", Crds: []string{"kind: CustomResourceDefinition # traefik"}}},
+			{Name: "disabled", Condition: "disabled.enabled", Chart: &models.HelmChart{Name: "disabled", Crds: []string{"kind: CustomResourceDefinition # disabled"}}},
+		},
+	}
+}
+
+func Test_UpgradePackage_Succeeds_ApplyingTheCrdsOfTheChartAndItsEnabledDependencies(t *testing.T) {
+	mockHelmService := &mocks.MockHelmService{}
+	mockHelmService.On("IsPackageInstalled", mock.Anything, mock.Anything, mock.Anything).Return(true)
+	mockHelmService.On("PullChart", mock.Anything, mock.Anything, mock.Anything).Return(chartWithCrds(), nil)
+	mockHelmService.On("AddRepo", mock.Anything, mock.Anything).Return(nil)
+	mockHelmService.On("ApplyCrds", "test-context", mock.Anything).Return(nil)
+	mockHelmService.On("UpgradeChart", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+	bbeConfig := models.BbeConfig{}
+	bbeConfig.Bbe.Cluster.Context = "test-context"
+	_, err := PackageService{}.UpgradePackage(models.ChartEntry{Name: "bbe-networking"}, nil, bbeConfig, mockHelmService, &mocks.MockUiService{}, false)
+
+	assert.NoError(t, err)
+	mockHelmService.AssertCalled(t, "ApplyCrds", "test-context", []string{"kind: CustomResourceDefinition # parent", "kind: CustomResourceDefinition # traefik"})
+	mockHelmService.AssertCalled(t, "UpgradeChart", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+func Test_UpgradePackage_Succeeds_ApplyingTheCrdsOfADependencyItsValuesTurnOn(t *testing.T) {
+	mockHelmService := &mocks.MockHelmService{}
+	mockHelmService.On("IsPackageInstalled", mock.Anything, mock.Anything, mock.Anything).Return(true)
+	mockHelmService.On("PullChart", mock.Anything, mock.Anything, mock.Anything).Return(chartWithCrds(), nil)
+	mockHelmService.On("AddRepo", mock.Anything, mock.Anything).Return(nil)
+	mockHelmService.On("ApplyCrds", mock.Anything, mock.Anything).Return(nil)
+	mockHelmService.On("UpgradeChart", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+	values := map[string]interface{}{"disabled": map[string]interface{}{"enabled": true}}
+	_, err := PackageService{}.UpgradePackage(models.ChartEntry{Name: "bbe-networking"}, values, models.BbeConfig{}, mockHelmService, &mocks.MockUiService{}, false)
+
+	assert.NoError(t, err)
+	mockHelmService.AssertCalled(t, "ApplyCrds", "", []string{"kind: CustomResourceDefinition # parent", "kind: CustomResourceDefinition # traefik", "kind: CustomResourceDefinition # disabled"})
+}
+
+func Test_UpgradePackage_Fails_WhenTheCrdsCannotBeApplied(t *testing.T) {
+	mockHelmService := &mocks.MockHelmService{}
+	mockHelmService.On("IsPackageInstalled", mock.Anything, mock.Anything, mock.Anything).Return(true)
+	mockHelmService.On("PullChart", mock.Anything, mock.Anything, mock.Anything).Return(chartWithCrds(), nil)
+	mockHelmService.On("AddRepo", mock.Anything, mock.Anything).Return(nil)
+	mockHelmService.On("ApplyCrds", mock.Anything, mock.Anything).Return(errors.New("Mock failed to apply"))
+
+	values, err := PackageService{}.UpgradePackage(models.ChartEntry{Name: "bbe-networking"}, nil, models.BbeConfig{}, mockHelmService, &mocks.MockUiService{}, false)
+
+	assert.Nil(t, values)
+	assert.EqualError(t, err, "Mock failed to apply")
+	mockHelmService.AssertNotCalled(t, "UpgradeChart", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+func Test_InstallPackage_Succeeds_ApplyingTheCrdsFirst(t *testing.T) {
+	mockHelmService := &mocks.MockHelmService{}
+	mockHelmService.On("IsPackageInstalled", mock.Anything, mock.Anything, mock.Anything).Return(false)
+	mockHelmService.On("PullChart", mock.Anything, mock.Anything, mock.Anything).Return(chartWithCrds(), nil)
+	mockHelmService.On("AddRepo", mock.Anything, mock.Anything).Return(nil)
+	mockHelmService.On("ApplyCrds", mock.Anything, mock.Anything).Return(nil)
+	mockHelmService.On("InstallChart", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+	_, err := PackageService{}.InstallPackage(models.ChartEntry{Name: "bbe-networking"}, nil, models.BbeConfig{}, mockHelmService, &mocks.MockUiService{})
+
+	assert.NoError(t, err)
+	mockHelmService.AssertCalled(t, "ApplyCrds", "", []string{"kind: CustomResourceDefinition # parent", "kind: CustomResourceDefinition # traefik"})
+}
+
+func Test_InstallPackage_Fails_WhenTheCrdsCannotBeApplied(t *testing.T) {
+	mockHelmService := &mocks.MockHelmService{}
+	mockHelmService.On("IsPackageInstalled", mock.Anything, mock.Anything, mock.Anything).Return(false)
+	mockHelmService.On("PullChart", mock.Anything, mock.Anything, mock.Anything).Return(chartWithCrds(), nil)
+	mockHelmService.On("AddRepo", mock.Anything, mock.Anything).Return(nil)
+	mockHelmService.On("ApplyCrds", mock.Anything, mock.Anything).Return(errors.New("Mock failed to apply"))
+
+	values, err := PackageService{}.InstallPackage(models.ChartEntry{Name: "bbe-networking"}, nil, models.BbeConfig{}, mockHelmService, &mocks.MockUiService{})
+
+	assert.Nil(t, values)
+	assert.EqualError(t, err, "Mock failed to apply")
+	mockHelmService.AssertNotCalled(t, "InstallChart", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}

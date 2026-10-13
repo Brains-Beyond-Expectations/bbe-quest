@@ -12,6 +12,7 @@ import (
 
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/misc/logger"
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/models"
+	"golang.org/x/mod/semver"
 	"gopkg.in/yaml.v3"
 )
 
@@ -88,9 +89,41 @@ func chartArgs(chartName string, repoName string, version string) []string {
 	return []string{fmt.Sprintf("%s/%s", repoName, chartName), "--version", version}
 }
 
+// Charts use template functions older helm versions can't parse, such as `break` in Traefik's chart
+const minimumHelmVersion = "v3.10.0"
+
+// Every package command pulls its chart first, so helm's version is checked there, once
+var helmVersionChecked = false
+
+// Refuses a helm that says it's too old, as it would fail on the chart with an unclear error. A version that can't be
+// read doesn't stop anything, helm still explains what it can't do
+func verifyHelmVersion() error {
+	if helmVersionChecked {
+		return nil
+	}
+	helmVersionChecked = true
+
+	response, err := execCommand("helm", "version", "--template", "{{.Version}}").Output()
+	if err != nil {
+		logger.Debug(fmt.Sprintf("Could not read helm's version: %v", err))
+		return nil
+	}
+
+	version := strings.TrimSpace(string(response))
+	if semver.IsValid(version) && semver.Compare(version, minimumHelmVersion) < 0 {
+		return fmt.Errorf("helm %s is too old for bbe's packages, please upgrade it to %s or newer", version, minimumHelmVersion)
+	}
+
+	return nil
+}
+
 // Downloads a chart without adding its repository, or packages a chart folder (a file:// URL), to read its values
 // and schema
 func (HelmService HelmService) PullChart(repositoryUrl string, chartName string, version string) (*models.HelmChart, error) {
+	if err := verifyHelmVersion(); err != nil {
+		return nil, err
+	}
+
 	destination, err := osMkdirTemp("", "bbe-chart-")
 	if err != nil {
 		return nil, fmt.Errorf("Failed to create a directory for helm chart `%s`: %w", chartName, err)
@@ -190,6 +223,27 @@ func (HelmService HelmService) PrepareNamespace(namespace string, context string
 	}
 	if _, err := kubectl(context, args...); err != nil {
 		return fmt.Errorf("Failed to set the pod security level of namespace `%s`: %w", namespace, err)
+	}
+
+	return nil
+}
+
+// Helm installs the CRDs in a chart's crds/ folder only on the first install, and never changes them after. Applying
+// them first lets an upgrade bring new or changed CRDs, and a reinstall replace the ones an older version left behind.
+// Server-side apply takes over the fields helm set, and has no size limit for large CRDs
+func (HelmService HelmService) ApplyCrds(context string, crds []string) error {
+	cmd := execCommand("kubectl", "apply", "--server-side", "--force-conflicts", "--field-manager", "bbe", "-f", "-", "--context", context)
+	cmd.Stdin = strings.NewReader(strings.Join(crds, "\n---\n"))
+	logger.Debug(fmt.Sprintf("Applying %d CRD manifests", len(crds)))
+	logger.Debug(fmt.Sprintf("Command: %s", cmd.String()))
+
+	response, err := cmd.CombinedOutput()
+	logger.Debug(fmt.Sprintf("Response: %s", string(response)))
+	if errors.Is(err, exec.ErrNotFound) {
+		return errors.New("kubectl is needed to apply the CRDs of this package, please install it")
+	}
+	if err != nil {
+		return fmt.Errorf("Failed to apply the CRDs of this package: %w%s", err, helmOutput(response))
 	}
 
 	return nil

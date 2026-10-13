@@ -148,6 +148,10 @@ func (packageService PackageService) InstallPackage(chart models.ChartEntry, val
 		return nil, err
 	}
 
+	if err := applyCrds(helmChart, values, bbeConfig, helmService); err != nil {
+		return nil, err
+	}
+
 	err = helmService.InstallChart(chart.Name, chartName, repoName, version, chart.Name, bbeConfig.Bbe.Cluster.Context, values)
 	if err != nil {
 		return nil, err
@@ -183,6 +187,10 @@ func (packageService PackageService) UpgradePackage(chart models.ChartEntry, val
 		return nil, err
 	}
 
+	if err := applyCrds(helmChart, values, bbeConfig, helmService); err != nil {
+		return nil, err
+	}
+
 	err = helmService.UpgradeChart(chart.Name, chartName, repoName, version, chart.Name, bbeConfig.Bbe.Cluster.Context, values)
 	if err != nil {
 		return nil, err
@@ -214,6 +222,17 @@ func prepareNamespace(chart models.ChartEntry, helmChart *models.HelmChart, bbeC
 	}
 
 	return helmService.PrepareNamespace(chart.Name, bbeConfig.Bbe.Cluster.Context, helmChart.PodSecurity)
+}
+
+// Helm only installs CRDs from a chart's crds/ folder on its first install, so bbe applies them before every install
+// and upgrade
+func applyCrds(helmChart *models.HelmChart, values map[string]interface{}, bbeConfig models.BbeConfig, helmService interfaces.HelmServiceInterface) error {
+	crds := chartCrds(helmChart, coalesceValues(helmChart, values))
+	if len(crds) == 0 {
+		return nil
+	}
+
+	return helmService.ApplyCrds(bbeConfig.Bbe.Cluster.Context, crds)
 }
 
 // Returns what the chart needs in the cluster before it can be installed, from its Chart.yaml

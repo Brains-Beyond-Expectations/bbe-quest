@@ -51,7 +51,7 @@ func readChartArchive(archivePath string) (*models.HelmChart, error) {
 		}
 
 		name := path.Clean(header.Name)
-		if header.Typeflag != tar.TypeReg || !slices.Contains(chartFiles, path.Base(name)) {
+		if header.Typeflag != tar.TypeReg || !(slices.Contains(chartFiles, path.Base(name)) || inCrdsFolder(name)) {
 			continue
 		}
 
@@ -120,6 +120,12 @@ func parseChart(files map[string][]byte, dir string) (*models.HelmChart, error) 
 		}
 	}
 
+	for _, name := range slices.Sorted(maps.Keys(files)) {
+		if file, found := strings.CutPrefix(name, dir+"/crds/"); found && isManifest(file) {
+			chart.Crds = append(chart.Crds, string(files[name]))
+		}
+	}
+
 	subcharts := map[string]*models.HelmChart{}
 	for _, subchartDir := range subchartDirs(files, dir) {
 		subchart, err := parseChart(files, subchartDir)
@@ -143,6 +149,15 @@ func parseChart(files map[string][]byte, dir string) (*models.HelmChart, error) 
 	}
 
 	return chart, nil
+}
+
+// Helm reads every manifest under a chart's crds/ folder as a CRD
+func inCrdsFolder(name string) bool {
+	return slices.Contains(strings.Split(path.Dir(name), "/"), "crds") && isManifest(name)
+}
+
+func isManifest(name string) bool {
+	return slices.Contains([]string{".yaml", ".yml", ".json"}, path.Ext(name))
 }
 
 func subchartDirs(files map[string][]byte, dir string) []string {

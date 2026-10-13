@@ -358,3 +358,28 @@ func Test_readChartArchive_Fails_WithAnInvalidUninstall(t *testing.T) {
 		assert.ErrorContains(t, err, expected, annotation)
 	}
 }
+
+func Test_readChartArchive_Succeeds_ReadingTheCrdsOfEachChart(t *testing.T) {
+	archive := filepath.Join(t.TempDir(), "parent-1.0.0.tgz")
+	writeChartArchive(t, archive, map[string]string{
+		"parent/Chart.yaml":                      "name: parent\n",
+		"parent/crds/b.yaml":                     "kind: CustomResourceDefinition # b\n",
+		"parent/crds/a.json":                     `{"kind": "CustomResourceDefinition"}`,
+		"parent/crds/nested/c.yml":               "kind: CustomResourceDefinition # c\n",
+		"parent/crds/README.md":                  "Not a manifest\n",
+		"parent/templates/crds.yaml":             "kind: CustomResourceDefinition # a template, which helm upgrades itself\n",
+		"parent/charts/child/Chart.yaml":         "name: child\n",
+		"parent/charts/child/crds/child.yaml":    "kind: CustomResourceDefinition # child\n",
+		"parent/charts/crds/Chart.yaml":          "name: crds\n",
+		"parent/charts/crds/templates/crds.yaml": "kind: CustomResourceDefinition # a subchart named crds, with templates\n",
+	})
+
+	chart, err := readChartArchive(archive)
+
+	assert.NoError(t, err)
+	assert.Equal(t, []string{`{"kind": "CustomResourceDefinition"}`, "kind: CustomResourceDefinition # b\n", "kind: CustomResourceDefinition # c\n"}, chart.Crds)
+	assert.Equal(t, "child", chart.Dependencies[0].Chart.Name)
+	assert.Equal(t, []string{"kind: CustomResourceDefinition # child\n"}, chart.Dependencies[0].Chart.Crds)
+	assert.Equal(t, "crds", chart.Dependencies[1].Chart.Name)
+	assert.Empty(t, chart.Dependencies[1].Chart.Crds)
+}
