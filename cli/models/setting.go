@@ -11,6 +11,31 @@ type ChartSetting struct {
 	Secret string `yaml:"secret"`
 	// Where bbe looks up what can be added
 	Catalog *SettingCatalog `yaml:"catalog"`
+	// What bbe asks for to add an entry, for a setting without a catalog to look it up in
+	Fields []SettingField `yaml:"fields"`
+}
+
+// One thing bbe asks for when adding an entry, stored under its name in the entry
+type SettingField struct {
+	Name        string `yaml:"name"`
+	Label       string `yaml:"label"`
+	Description string `yaml:"description"`
+	// A regular expression the value has to match
+	Pattern  string `yaml:"pattern"`
+	Optional bool   `yaml:"optional"`
+	// No two entries have the same value, which names the entry. A setting with fields has one
+	Unique bool `yaml:"unique"`
+	// The values to choose from, instead of typing one
+	Options []SettingFieldOption `yaml:"options"`
+	// bbe generates the value, a random password, and shows it once it's saved
+	Generate bool `yaml:"generate"`
+	// Kept in the setting's secret instead of bbe.yaml
+	Secret bool `yaml:"secret"`
+}
+
+type SettingFieldOption struct {
+	Name  string      `yaml:"name"`
+	Value interface{} `yaml:"value"`
 }
 
 type SettingCatalog struct {

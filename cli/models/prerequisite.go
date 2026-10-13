@@ -9,7 +9,8 @@ type ChartPrerequisite struct {
 	StorageClass string `yaml:"storageClass"`
 	// Checks that every Talos node is set up for the chart
 	Talos *TalosPrerequisite `yaml:"talos"`
-	// The bbe package that provides the prerequisite, installed when it's missing
+	// The bbe package that provides the prerequisite, installed when it's missing. On its own, it checks that the
+	// package is installed
 	Package string `yaml:"package"`
 }
 

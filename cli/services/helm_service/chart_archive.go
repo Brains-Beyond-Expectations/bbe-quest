@@ -196,7 +196,7 @@ func parsePrerequisites(annotation string) ([]models.ChartPrerequisite, error) {
 		if prerequisite.Name == "" {
 			return nil, errors.New("every prerequisite needs a name")
 		}
-		if prerequisite.StorageClass == "" && prerequisite.Talos == nil {
+		if prerequisite.StorageClass == "" && prerequisite.Talos == nil && prerequisite.Package == "" {
 			return nil, fmt.Errorf("prerequisite `%s` has nothing to check", prerequisite.Name)
 		}
 		if prerequisite.Talos != nil {
@@ -231,8 +231,17 @@ func parseSettings(annotation string) ([]models.ChartSetting, error) {
 		if setting.Name == "" || setting.Values == "" {
 			return nil, errors.New("every setting needs a name and the path of its values")
 		}
-		if setting.Catalog == nil {
-			return nil, fmt.Errorf("setting `%s` needs a catalog to add entries from", setting.Name)
+		if setting.Catalog == nil && len(setting.Fields) == 0 {
+			return nil, fmt.Errorf("setting `%s` needs a catalog to add entries from, or the fields to ask for", setting.Name)
+		}
+		if setting.Catalog != nil && len(setting.Fields) > 0 {
+			return nil, fmt.Errorf("setting `%s` has both a catalog and fields, but can only add entries from one", setting.Name)
+		}
+		if len(setting.Fields) > 0 {
+			if err := validateSettingFields(setting); err != nil {
+				return nil, err
+			}
+			continue
 		}
 		if !slices.Contains(settingCatalogTypes, setting.Catalog.Type) {
 			return nil, fmt.Errorf("setting `%s` has catalog type `%s`, which bbe doesn't know", setting.Name, setting.Catalog.Type)
@@ -243,6 +252,45 @@ func parseSettings(annotation string) ([]models.ChartSetting, error) {
 	}
 
 	return settings, nil
+}
+
+func validateSettingFields(setting models.ChartSetting) error {
+	unique := 0
+	names := map[string]bool{}
+	for _, field := range setting.Fields {
+		if field.Name == "" {
+			return fmt.Errorf("every field of setting `%s` needs a name", setting.Name)
+		}
+		if names[field.Name] {
+			return fmt.Errorf("setting `%s` has two fields named `%s`", setting.Name, field.Name)
+		}
+		names[field.Name] = true
+		if field.Unique {
+			unique++
+		}
+		if _, err := regexp.Compile(field.Pattern); err != nil {
+			return fmt.Errorf("the pattern of field `%s` in setting `%s` isn't a regular expression: %w", field.Name, setting.Name, err)
+		}
+		if field.Generate && !field.Secret {
+			return fmt.Errorf("field `%s` in setting `%s` is generated, so it has to be secret", field.Name, setting.Name)
+		}
+		if field.Secret && setting.Secret == "" {
+			return fmt.Errorf("field `%s` in setting `%s` is secret, but the setting has no secret to keep it in", field.Name, setting.Name)
+		}
+		if field.Unique && (field.Secret || field.Optional || len(field.Options) > 0) {
+			return fmt.Errorf("field `%s` in setting `%s` names its entries, so it has to be typed in, required and not secret", field.Name, setting.Name)
+		}
+		for _, option := range field.Options {
+			if option.Name == "" || option.Value == nil {
+				return fmt.Errorf("every option of field `%s` in setting `%s` needs a name and a value", field.Name, setting.Name)
+			}
+		}
+	}
+	if unique != 1 {
+		return fmt.Errorf("setting `%s` needs one unique field, which names its entries", setting.Name)
+	}
+
+	return nil
 }
 
 // A namespace name, which Kubernetes limits to a DNS label
