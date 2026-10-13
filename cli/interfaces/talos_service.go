@@ -19,6 +19,7 @@ type TalosServiceInterface interface {
 	ModifyNetworkNodeIp(helperService HelperServiceInterface, configFile string, nodeIp string) error
 	ModifySchedulingOnControlPlane(helperService HelperServiceInterface, allowScheduling bool) error
 	ModifyTimeServer(helperService HelperServiceInterface, configFile string, timeServer string) error
+	ModifyUserVolumes(helperService HelperServiceInterface, configFile string, names []string) error
 	Ping(nodeIp string) bool
 	VerifyNodeHealth(helperService HelperServiceInterface, nodeIp string, controlPlaneIp string) error
 	WarnIfTalosVersionMismatch(expectedVersion string)

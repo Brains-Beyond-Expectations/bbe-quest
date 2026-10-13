@@ -14,6 +14,7 @@ const (
 	TalosKubeClusterConfigKind       = "KubeClusterConfig"
 	TalosResolverConfigKind          = "ResolverConfig"
 	TalosKubeNodeConfigKind          = "KubeNodeConfig"
+	TalosUserVolumeConfigKind        = "UserVolumeConfig"
 )
 
 // TalosControlPlaneTaint keeps workloads off control plane nodes; removing it is what
@@ -123,5 +124,14 @@ type TalosKubeNodeConfig struct {
 	ApiVersion string                 `yaml:"apiVersion,omitempty"`
 	Kind       string                 `yaml:"kind,omitempty"`
 	Taints     map[string]string      `yaml:"taints"`
+	Unmapped   map[string]interface{} `yaml:",inline"`
+}
+
+// A directory user volume is a folder on the system disk, which Talos creates at /var/mnt/<name>
+type TalosUserVolumeConfig struct {
+	ApiVersion string                 `yaml:"apiVersion"`
+	Kind       string                 `yaml:"kind"`
+	Name       string                 `yaml:"name"`
+	VolumeType string                 `yaml:"volumeType,omitempty"`
 	Unmapped   map[string]interface{} `yaml:",inline"`
 }

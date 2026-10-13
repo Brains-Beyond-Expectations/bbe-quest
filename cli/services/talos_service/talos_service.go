@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -24,6 +25,7 @@ var fiveMinutes = 5 * time.Minute
 
 var osReadFile = os.ReadFile
 var osWriteFile = os.WriteFile
+var yamlMarshal = yaml.Marshal
 
 var talosVersionRegex = regexp.MustCompile(`Talos\s+(v[0-9]+\.[0-9]+\.[0-9]+)`)
 
@@ -405,6 +407,39 @@ func (talosService TalosService) ModifyTimeServer(helperService interfaces.Helpe
 	return writeDocuments(configDir, configFile, documents)
 }
 
+// Adds directory user volumes, which Talos creates at /var/mnt/<name> and pods can store data in, keeping any
+// already there
+func (talosService TalosService) ModifyUserVolumes(helperService interfaces.HelperServiceInterface, configFile string, names []string) error {
+	configDir := helperService.GetConfigDir()
+
+	documents, err := getParsedDocuments(configDir, configFile)
+	if err != nil {
+		return err
+	}
+
+	for _, name := range names {
+		exists := slices.ContainsFunc(documents, func(document map[string]interface{}) bool {
+			return document["kind"] == models.TalosUserVolumeConfigKind && document["name"] == name
+		})
+		if exists {
+			continue
+		}
+
+		documents = append(documents, map[string]interface{}{})
+		volume := models.TalosUserVolumeConfig{
+			ApiVersion: models.TalosConfigApiVersion,
+			Kind:       models.TalosUserVolumeConfigKind,
+			Name:       name,
+			VolumeType: "directory",
+		}
+		if err := setDocument(documents, len(documents)-1, volume); err != nil {
+			return err
+		}
+	}
+
+	return writeDocuments(configDir, configFile, documents)
+}
+
 func (talosService TalosService) ModifyConfigDisk(helperService interfaces.HelperServiceInterface, configFile string, disk string) error {
 	configDir := helperService.GetConfigDir()
 
@@ -599,7 +634,7 @@ func getOrCreateDocument(documents *[]map[string]interface{}, kind string, targe
 // setDocument encodes source back over the document at index, keeping every other document
 // in the config untouched.
 func setDocument(documents []map[string]interface{}, index int, source interface{}) error {
-	encoded, err := yaml.Marshal(source)
+	encoded, err := yamlMarshal(source)
 	if err != nil {
 		return err
 	}
