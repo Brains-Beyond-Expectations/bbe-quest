@@ -287,3 +287,10 @@ func missingPaths(missing []models.RequiredChartValue) [][]string {
 
 	return paths
 }
+
+func Test_NormalizeValues_Succeeds_WithBbeYamlMaps(t *testing.T) {
+	values := map[string]interface{}{"bbe": map[interface{}]interface{}{"media": []interface{}{map[interface{}]interface{}{"name": "a"}}}}
+
+	assert.Equal(t, map[string]interface{}{"bbe": map[string]interface{}{"media": []interface{}{map[string]interface{}{"name": "a"}}}}, NormalizeValues(values))
+	assert.Nil(t, NormalizeValues(nil))
+}

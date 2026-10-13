@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/mocks"
@@ -385,4 +386,170 @@ func Test_configureCommand_Fails_RemovingTheCredentials(t *testing.T) {
 func Test_secretKey(t *testing.T) {
 	assert.Equal(t, "beyondhd.apiKey", secretKey("BeyondHD", "apiKey"))
 	assert.Equal(t, "my-private-tracker.password", secretKey(" My Private Tracker! ", "password"))
+}
+
+var customDefinition = models.IndexerDefinition{
+	Name: "Custom", DefinitionName: "custom", Privacy: "public", Protocol: "torrent",
+	Fields: []models.IndexerField{
+		{Name: "userAgent", Label: "User agent", Type: "textbox", Value: "bbe"},
+		{Name: "sort", Label: "Sort", Type: "select", Value: float64(2), SelectOptions: []models.IndexerFieldOption{
+			{Value: float64(0), Name: "created"},
+			{Value: float64(2), Name: "seeders"},
+		}},
+		{Name: "order", Label: "Order", Type: "select", Value: "desc", SelectOptions: []models.IndexerFieldOption{
+			{Value: "asc", Name: "ascending"},
+			{Value: "desc", Name: "descending"},
+		}},
+		{Name: "limit", Label: "Limit", Type: "number", Value: float64(5)},
+	},
+}
+
+func Test_configureCommand_Succeeds_RemovingAndAddingAgainInOneGo(t *testing.T) {
+	m := newConfigureMocks([]interface{}{
+		map[interface{}]interface{}{"name": "BeyondHD", "definition": "BeyondHD", "secretFields": map[interface{}]interface{}{"apiKey": "beyondhd.apiKey"}},
+	})
+	m.catalog.ExpectedCalls = nil
+	m.catalog.On("IndexerDefinitions", mock.Anything, mock.Anything).Return(append(indexerDefinitions, customDefinition), nil)
+	m.ui.On("CreateSelect", actionTitle, actionsWithEntries).Return("Remove", nil).Once()
+	m.ui.On("CreateSelect", "Which of the indexers would you like to remove?", []string{"BeyondHD", "Cancel"}).Return("BeyondHD", nil)
+	m.ui.On("CreateSelect", actionTitle, actionsWithoutEntries).Return("Add", nil).Once()
+	m.ui.On("CreateInput", searchTitle, "").Return("beyond", nil).Once()
+	m.ui.On("CreateSelect", "1 indexers match", []string{"BeyondHD (private torrent)", "Search again"}).Return("BeyondHD (private torrent)", nil)
+	m.ui.On("CreateInput", "Name it", "BeyondHD").Return("", nil)
+	m.ui.On("CreateSelect", "BeyondHD: Base Url", mock.Anything).Return("https://beyond-hd.me/", nil)
+	m.ui.On("CreatePassword", "BeyondHD: API Key").Return("new-key", nil)
+	m.ui.On("CreatePassword", "BeyondHD: RSS Key").Return("", nil)
+	m.ui.On("CreateSelect", "BeyondHD: Freeleech Only", mock.Anything).Return("No", nil)
+	m.ui.On("CreateSelect", actionTitle, actionsWithEntries).Return("Add", nil).Once()
+	m.ui.On("CreateInput", searchTitle, "").Return("custom", nil).Once()
+	m.ui.On("CreateSelect", "1 indexers match", []string{"Custom (public torrent)", "Search again"}).Return("Custom (public torrent)", nil)
+	m.ui.On("CreateInput", "Name it", "Custom").Return("", nil)
+	m.ui.On("CreateInput", "Custom: User agent", "bbe").Return("firefox", nil)
+	m.ui.On("CreateSelect", "Custom: Sort", []string{"seeders", "created"}).Return("created", nil)
+	m.ui.On("CreateSelect", "Custom: Order", []string{"descending", "ascending"}).Return("ascending", nil)
+	m.ui.On("CreateInput", "Custom: Limit", "5").Return("5", nil)
+	m.ui.On("CreateSelect", actionTitle, actionsWithEntries).Return("Done", nil).Once()
+	m.kubernetes.On("SetSecretValues", mock.Anything, mock.Anything, mock.Anything, map[string]string{"beyondhd.apiKey": "new-key"}).Return(nil)
+	expected := mediaValues(
+		map[string]interface{}{"name": "BeyondHD", "definition": "BeyondHD", "fields": map[string]interface{}{"baseUrl": "https://beyond-hd.me/"}, "secretFields": map[string]interface{}{"apiKey": "beyondhd.apiKey"}},
+		map[string]interface{}{"name": "Custom", "definition": "custom", "fields": map[string]interface{}{"userAgent": "firefox", "sort": int64(0), "order": "asc"}},
+	)
+	m.pkg.On("UpgradePackage", mediaChart, expected, true).Return(expected, nil)
+
+	err := m.run("bbe-media")
+
+	assert.NoError(t, err)
+	m.pkg.AssertCalled(t, "UpgradePackage", mediaChart, expected, true)
+	// The catalog is read once, and the credential added again isn't removed
+	m.catalog.AssertNumberOfCalls(t, "IndexerDefinitions", 1)
+	m.kubernetes.AssertNotCalled(t, "RemoveSecretValues", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+func Test_configureCommand_Succeeds_ShowingTheFirstMatches(t *testing.T) {
+	m := newConfigureMocks(nil)
+	many := []models.IndexerDefinition{}
+	for i := 0; i < 30; i++ {
+		many = append(many, models.IndexerDefinition{Name: fmt.Sprintf("Tracker %02d", i), DefinitionName: fmt.Sprintf("tracker%02d", i), Privacy: "public", Protocol: "torrent"})
+	}
+	m.catalog.ExpectedCalls = nil
+	m.catalog.On("IndexerDefinitions", mock.Anything, mock.Anything).Return(many, nil)
+	m.ui.On("CreateSelect", actionTitle, actionsWithoutEntries).Return("Add", nil).Once()
+	m.ui.On("CreateInput", searchTitle, "").Return("tracker", nil).Once()
+	m.ui.On("CreateSelect", "30 indexers match, the first 25 are shown", mock.MatchedBy(func(options []string) bool {
+		return len(options) == 26 && options[0] == "Tracker 00 (public torrent)" && options[25] == "Search again"
+	})).Return("Search again", nil)
+	m.ui.On("CreateInput", searchTitle, "").Return("", nil).Once()
+	m.ui.On("CreateSelect", actionTitle, actionsWithoutEntries).Return("Done", nil).Once()
+
+	err := m.run("bbe-media")
+
+	assert.NoError(t, err)
+}
+
+func Test_configureCommand_Succeeds_ForAPackageWithoutValues(t *testing.T) {
+	m := newConfigureMocks(nil)
+	m.bbeConfig.Bbe.Packages[1].Values = nil
+	m.ui.On("CreateSelect", actionTitle, actionsWithoutEntries).Return("Done", nil)
+
+	err := m.run("bbe-media")
+
+	assert.NoError(t, err)
+}
+
+func Test_configureCommand_Fails_WhenNothingIsInstalled(t *testing.T) {
+	m := newConfigureMocks(nil)
+	m.bbeConfig.Bbe.Packages = nil
+
+	err := m.run()
+
+	assert.EqualError(t, err, "No packages are installed, install one with 'bbe install'")
+}
+
+func Test_configureCommand_Fails_WhenAPromptFails(t *testing.T) {
+	failed := errors.New("Mock prompt cancelled")
+	addUntil := func(m configureMocks) {
+		m.ui.On("CreateSelect", actionTitle, actionsWithoutEntries).Return("Add", nil)
+	}
+	choose := func(query string, option string) func(m configureMocks) {
+		return func(m configureMocks) {
+			addUntil(m)
+			m.ui.On("CreateInput", searchTitle, "").Return(query, nil)
+			m.ui.On("CreateSelect", "1 indexers match", mock.Anything).Return(option, nil)
+		}
+	}
+	cases := map[string]func(m configureMocks){
+		"choosing the package": func(m configureMocks) {
+			m.ui.On("CreateSelect", "Which package would you like to configure?", mock.Anything).Return("", failed)
+		},
+		"choosing the setting": func(m configureMocks) {
+			m.helm.ExpectedCalls = nil
+			m.helm.On("PullChart", mock.Anything, mock.Anything, mock.Anything).Return(&models.HelmChart{Settings: []models.ChartSetting{indexersSetting, indexersSetting}}, nil)
+			m.ui.On("CreateSelect", "Which setting would you like to configure?", mock.Anything).Return("", failed)
+		},
+		"searching": func(m configureMocks) {
+			addUntil(m)
+			m.ui.On("CreateInput", searchTitle, "").Return("", failed)
+		},
+		"picking a match": func(m configureMocks) {
+			addUntil(m)
+			m.ui.On("CreateInput", searchTitle, "").Return("linux", nil)
+			m.ui.On("CreateSelect", "1 indexers match", mock.Anything).Return("", failed)
+		},
+		"naming it": func(m configureMocks) {
+			choose("linux", "LinuxTracker (public torrent)")(m)
+			m.ui.On("CreateInput", "Name it", mock.Anything).Return("", failed)
+		},
+		"a number": func(m configureMocks) {
+			choose("linux", "LinuxTracker (public torrent)")(m)
+			m.ui.On("CreateInput", "Name it", mock.Anything).Return("", nil)
+			m.ui.On("CreateInput", "LinuxTracker: Seed Ratio", mock.Anything).Return("", failed)
+		},
+		"a select": func(m configureMocks) {
+			choose("linux", "LinuxTracker (public torrent)")(m)
+			m.ui.On("CreateInput", "Name it", mock.Anything).Return("", nil)
+			m.ui.On("CreateInput", "LinuxTracker: Seed Ratio", mock.Anything).Return("", nil)
+			m.ui.On("CreateSelect", "LinuxTracker: Search only in title", mock.Anything).Return("Yes", nil)
+			m.ui.On("CreateSelect", "LinuxTracker: Sort requested from site", mock.Anything).Return("", failed)
+		},
+		"a credential": func(m configureMocks) {
+			choose("beyond", "BeyondHD (private torrent)")(m)
+			m.ui.On("CreateInput", "Name it", mock.Anything).Return("", nil)
+			m.ui.On("CreateSelect", "BeyondHD: Base Url", mock.Anything).Return("https://beyond-hd.me/", nil)
+			m.ui.On("CreatePassword", mock.Anything).Return("", failed)
+		},
+	}
+
+	for name, setup := range cases {
+		m := newConfigureMocks(nil)
+		setup(m)
+		args := []string{"bbe-media"}
+		if name == "choosing the package" {
+			args = nil
+		}
+
+		err := m.run(args...)
+
+		assert.EqualError(t, err, "Mock prompt cancelled", name)
+		m.pkg.AssertNotCalled(t, "UpgradePackage", mock.Anything, mock.Anything, mock.Anything)
+	}
 }

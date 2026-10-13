@@ -58,3 +58,10 @@ func Test_IndexerDefinitions_Fails_WhenProwlarrCannotBeReached(t *testing.T) {
 	assert.Nil(t, definitions)
 	assert.ErrorContains(t, err, "Failed to read Prowlarr's indexers")
 }
+
+func Test_IndexerDefinitions_Fails_WithAnInvalidUrl(t *testing.T) {
+	definitions, err := CatalogService{}.IndexerDefinitions("http://127.0.0.1:1\x7f", "key")
+
+	assert.Nil(t, definitions)
+	assert.ErrorContains(t, err, "invalid control character in URL")
+}
