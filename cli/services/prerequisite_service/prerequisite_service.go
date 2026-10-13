@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/misc/command"
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/misc/logger"
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/models"
 	"gopkg.in/yaml.v3"
@@ -488,7 +489,7 @@ func kubectl(cluster models.ClusterAccess, args ...string) ([]byte, error) {
 	cmd := execCommand("kubectl", append(args, "--context", cluster.KubeContext)...)
 	logger.Debug(fmt.Sprintf("Command: %s", cmd.String()))
 
-	response, err := cmd.CombinedOutput()
+	response, err := command.Output(cmd)
 	logger.Debug(fmt.Sprintf("Response: %s", string(response)))
 	if errors.Is(err, exec.ErrNotFound) {
 		return response, errors.New("kubectl is needed to check this package's prerequisites, please install it")
@@ -504,7 +505,7 @@ func talosctl(node node, cluster models.ClusterAccess, args ...string) ([]byte, 
 	cmd := execCommand("talosctl", append(args, "--nodes", node.ip, "--endpoints", cluster.ControlPlaneIp, "--talosconfig", cluster.TalosConfig)...)
 	logger.Debug(fmt.Sprintf("Command: %s", cmd.String()))
 
-	response, err := cmd.CombinedOutput()
+	response, err := command.Output(cmd)
 	logger.Debug(fmt.Sprintf("Response: %s", string(response)))
 	if err != nil {
 		return response, fmt.Errorf("%w%s", err, output(response))

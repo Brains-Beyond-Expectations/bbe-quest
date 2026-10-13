@@ -7,11 +7,13 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/constants"
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/interfaces"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/misc/command"
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/misc/logger"
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/models"
 	"gopkg.in/yaml.v2"
@@ -23,6 +25,7 @@ var fiveMinutes = 5 * time.Minute
 
 var osReadFile = os.ReadFile
 var osWriteFile = os.WriteFile
+var yamlMarshal = yaml.Marshal
 
 var talosVersionRegex = regexp.MustCompile(`Talos\s+(v[0-9]+\.[0-9]+\.[0-9]+)`)
 
@@ -181,7 +184,7 @@ func (talosService TalosService) VerifyNodeHealth(helperService interfaces.Helpe
 // read-only devices and CD-ROMs - the loop devices backing the running system among them.
 func (talosService TalosService) GetDisks(nodeIp string) ([]models.TalosDisk, error) {
 	cmd := execCommand("talosctl", "-n", nodeIp, "get", "disks", "--insecure", "-o", "yaml")
-	output, err := cmd.CombinedOutput()
+	output, err := command.Output(cmd)
 	logger.Debug(string(output))
 
 	if err != nil {
@@ -217,7 +220,7 @@ func parseDisks(output []byte) ([]models.TalosDisk, error) {
 
 func (talosService TalosService) GetNetworkInterface(helperService interfaces.HelperServiceInterface, nodeIp string) (string, error) {
 	cmd := execCommand("talosctl", "-n", nodeIp, "get", "addresses", "--talosconfig", helperService.GetConfigFilePath(constants.TalosConfigFile), "--insecure")
-	output, err := cmd.CombinedOutput()
+	output, err := command.Output(cmd)
 	logger.Debug(string(output))
 
 	if err != nil {
@@ -399,6 +402,39 @@ func (talosService TalosService) ModifyTimeServer(helperService interfaces.Helpe
 
 	if err := setDocument(documents, index, machineConfig); err != nil {
 		return err
+	}
+
+	return writeDocuments(configDir, configFile, documents)
+}
+
+// Adds directory user volumes, which Talos creates at /var/mnt/<name> and pods can store data in, keeping any
+// already there
+func (talosService TalosService) ModifyUserVolumes(helperService interfaces.HelperServiceInterface, configFile string, names []string) error {
+	configDir := helperService.GetConfigDir()
+
+	documents, err := getParsedDocuments(configDir, configFile)
+	if err != nil {
+		return err
+	}
+
+	for _, name := range names {
+		exists := slices.ContainsFunc(documents, func(document map[string]interface{}) bool {
+			return document["kind"] == models.TalosUserVolumeConfigKind && document["name"] == name
+		})
+		if exists {
+			continue
+		}
+
+		documents = append(documents, map[string]interface{}{})
+		volume := models.TalosUserVolumeConfig{
+			ApiVersion: models.TalosConfigApiVersion,
+			Kind:       models.TalosUserVolumeConfigKind,
+			Name:       name,
+			VolumeType: "directory",
+		}
+		if err := setDocument(documents, len(documents)-1, volume); err != nil {
+			return err
+		}
 	}
 
 	return writeDocuments(configDir, configFile, documents)
@@ -598,7 +634,7 @@ func getOrCreateDocument(documents *[]map[string]interface{}, kind string, targe
 // setDocument encodes source back over the document at index, keeping every other document
 // in the config untouched.
 func setDocument(documents []map[string]interface{}, index int, source interface{}) error {
-	encoded, err := yaml.Marshal(source)
+	encoded, err := yamlMarshal(source)
 	if err != nil {
 		return err
 	}

@@ -507,6 +507,51 @@ func Test_setupCommand_Fails__WhenFailingToModifyNetworkHostname(t *testing.T) {
 	configService.AssertNumberOfCalls(t, "UpdateBbeClusterName", 0)
 }
 
+func Test_setupCommand_Fails__WhenFailingToModifyTimeServer(t *testing.T) {
+	helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp := initSetupTests()
+
+	talosService.On("ModifyTimeServer", helperService, mock.Anything, mock.Anything).Return(errors.New("test error"))
+
+	mockSuccessfulSetupFlow(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp, true)
+
+	err := setupCommand(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService)
+
+	assert.EqualError(t, err, "Error while storing the time server in file: test error")
+	talosService.AssertNotCalled(t, "ModifySchedulingOnControlPlane", mock.Anything, mock.Anything)
+	configService.AssertNumberOfCalls(t, "GenerateBbeConfig", 0)
+	configService.AssertNumberOfCalls(t, "UpdateBbeClusterName", 0)
+}
+
+func Test_setupCommand_Fails__WhenFailingToModifyDnsServer(t *testing.T) {
+	helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp := initSetupTests()
+
+	talosService.On("ModifyDnsServer", helperService, mock.Anything, mock.Anything).Return(errors.New("test error"))
+
+	mockSuccessfulSetupFlow(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp, true)
+
+	err := setupCommand(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService)
+
+	assert.EqualError(t, err, "Error while storing the DNS server in file: test error")
+	talosService.AssertNotCalled(t, "ModifySchedulingOnControlPlane", mock.Anything, mock.Anything)
+	configService.AssertNumberOfCalls(t, "GenerateBbeConfig", 0)
+	configService.AssertNumberOfCalls(t, "UpdateBbeClusterName", 0)
+}
+
+func Test_setupCommand_Fails__WhenFailingToModifyUserVolumes(t *testing.T) {
+	helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp := initSetupTests()
+
+	talosService.On("ModifyUserVolumes", helperService, mock.Anything, mock.Anything).Return(errors.New("test error"))
+
+	mockSuccessfulSetupFlow(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp, true)
+
+	err := setupCommand(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService)
+
+	assert.EqualError(t, err, "Error while storing the user volumes in file: test error")
+	talosService.AssertNotCalled(t, "ModifySchedulingOnControlPlane", mock.Anything, mock.Anything)
+	configService.AssertNumberOfCalls(t, "GenerateBbeConfig", 0)
+	configService.AssertNumberOfCalls(t, "UpdateBbeClusterName", 0)
+}
+
 func Test_setupCommand_Fails__WhenFailingToModifySchedulingOnControlPlane(t *testing.T) {
 	helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp := initSetupTests()
 
@@ -743,6 +788,7 @@ func mockSuccessfulSetupFlow(helperService *mocks.MockHelperService, dependencyS
 	talosService.On("ModifyNetworkHostname", helperService, nodeTypeConfigFile, "talos-node").Return(nil)
 	talosService.On("ModifyTimeServer", helperService, nodeTypeConfigFile, gatewayIp).Return(nil)
 	talosService.On("ModifyDnsServer", helperService, nodeTypeConfigFile, gatewayIp).Return(nil)
+	talosService.On("ModifyUserVolumes", helperService, nodeTypeConfigFile, []string{"longhorn"}).Return(nil)
 	talosService.On("ModifySchedulingOnControlPlane", helperService, true).Return(nil)
 	talosService.On("ModifyConfigDisk", helperService, nodeTypeConfigFile, "/dev/sda").Return(nil)
 	talosService.On("WarnIfTalosVersionMismatch", mock.Anything).Return()
