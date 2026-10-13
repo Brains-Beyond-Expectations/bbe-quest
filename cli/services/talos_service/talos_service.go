@@ -12,6 +12,7 @@ import (
 
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/constants"
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/interfaces"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/misc/command"
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/misc/logger"
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/models"
 	"gopkg.in/yaml.v2"
@@ -181,7 +182,7 @@ func (talosService TalosService) VerifyNodeHealth(helperService interfaces.Helpe
 // read-only devices and CD-ROMs - the loop devices backing the running system among them.
 func (talosService TalosService) GetDisks(nodeIp string) ([]models.TalosDisk, error) {
 	cmd := execCommand("talosctl", "-n", nodeIp, "get", "disks", "--insecure", "-o", "yaml")
-	output, err := cmd.CombinedOutput()
+	output, err := command.Output(cmd)
 	logger.Debug(string(output))
 
 	if err != nil {
@@ -217,7 +218,7 @@ func parseDisks(output []byte) ([]models.TalosDisk, error) {
 
 func (talosService TalosService) GetNetworkInterface(helperService interfaces.HelperServiceInterface, nodeIp string) (string, error) {
 	cmd := execCommand("talosctl", "-n", nodeIp, "get", "addresses", "--talosconfig", helperService.GetConfigFilePath(constants.TalosConfigFile), "--insecure")
-	output, err := cmd.CombinedOutput()
+	output, err := command.Output(cmd)
 	logger.Debug(string(output))
 
 	if err != nil {
