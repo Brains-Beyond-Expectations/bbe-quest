@@ -90,8 +90,9 @@ Server:
 `
 
 type fakeCommand struct {
-	output string
-	fails  bool
+	output  string
+	fails   bool
+	warning string // Printed to stderr, like talosctl's warning about a client newer than the node
 }
 
 // Answers kubectl and talosctl by the start of their arguments, and records every call
@@ -102,11 +103,11 @@ func fakeCommands(t *testing.T, answers map[string]fakeCommand) *[]string {
 		*calls = append(*calls, call)
 		for prefix, answer := range answers {
 			if strings.HasPrefix(call, prefix) {
-				script := `printf '%s' "$0"`
+				script := `printf '%s' "$1" >&2; printf '%s' "$0"`
 				if answer.fails {
 					script += "; exit 1"
 				}
-				return exec.Command("sh", "-c", script, answer.output)
+				return exec.Command("sh", "-c", script, answer.output, answer.warning)
 			}
 		}
 		t.Fatalf("unexpected command: %s", call)
@@ -174,6 +175,24 @@ func Test_Check_Succeeds_ReportingWhatEachNodeIsMissing(t *testing.T) {
 		"the /var/mnt/longhorn directory on node `worker-1`",
 	}, missing)
 	assert.Contains(t, *calls, "talosctl get extensions -o yaml --nodes 192.168.1.162 --endpoints 192.168.1.161 --talosconfig /config/talosconfig")
+}
+
+func Test_Check_Succeeds_IgnoringTalosctlWarnings(t *testing.T) {
+	warning := "WARNING: 192.168.1.161: server version 1.14.1 is older than client version 1.14.2\n"
+	fakeCommands(t, map[string]fakeCommand{
+		"kubectl get nodes":          {output: nodesJson},
+		"talosctl get extensions":    {output: extensionsYaml, warning: warning},
+		"talosctl get machineconfig": {output: newConfigYaml, warning: warning},
+	})
+	prerequisite := models.ChartPrerequisite{Talos: &models.TalosPrerequisite{Extensions: []string{"siderolabs/util-linux-tools"}}}
+
+	missing, err := PrerequisiteService{}.Check(prerequisite, cluster)
+
+	assert.NoError(t, err)
+	assert.Equal(t, []string{
+		"the siderolabs/util-linux-tools extension on node `control-1`",
+		"the siderolabs/util-linux-tools extension on node `worker-1`",
+	}, missing)
 }
 
 func Test_PrepareNodes_Succeeds_PatchingAndUpgradingWorkersFirst(t *testing.T) {
