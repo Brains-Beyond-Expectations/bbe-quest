@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"errors"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/mocks"
@@ -12,21 +14,18 @@ import (
 
 func Test_installCommand_Succeeds(t *testing.T) {
 	helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService := initInstallCommand()
+	kubernetesService := mockUninstall(helmService, uiService)
 
 	mockSuccessfulInstallFlow(helperService, uiService, configService, packageService)
 
-	err := installCommand(helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService)
+	err := installCommand(helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService, kubernetesService)
 
 	assert.Nil(t, err)
 	uiService.AssertNumberOfCalls(t, "CreateMultiChoose", 1)
 	configService.AssertNumberOfCalls(t, "GetBbeConfig", 1)
 	configService.AssertNumberOfCalls(t, "UpdateBbePackages", 2)
 	packageService.AssertNumberOfCalls(t, "GetAll", 1)
-	packageService.AssertNumberOfCalls(t, "UninstallPackage", 1)
-	packageService.AssertCalled(t, "UninstallPackage", models.LocalPackage{
-		Name:    "package_to_be_removed",
-		Version: "2.0.0",
-	})
+	helmService.AssertCalled(t, "UninstallChart", "package_to_be_removed", "package_to_be_removed", "")
 	packageService.AssertNumberOfCalls(t, "InstallPackage", 2)
 	packageService.AssertCalled(t, "InstallPackage", models.ChartEntry{
 		Name:    "package_to_be_installed",
@@ -36,117 +35,102 @@ func Test_installCommand_Succeeds(t *testing.T) {
 
 func Test_installCommand_Fails_WithNoCluster(t *testing.T) {
 	helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService := initInstallCommand()
+	kubernetesService := mockUninstall(helmService, uiService)
 
 	configService.On("GetBbeConfig", mock.Anything).Return(&models.BbeConfig{}, errors.New("test error"))
 
 	mockSuccessfulInstallFlow(helperService, uiService, configService, packageService)
 
-	err := installCommand(helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService)
+	err := installCommand(helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService, kubernetesService)
 
 	assert.Nil(t, err)
 	uiService.AssertNumberOfCalls(t, "CreateMultiChoose", 0)
 	configService.AssertNumberOfCalls(t, "GetBbeConfig", 1)
 	configService.AssertNumberOfCalls(t, "UpdateBbePackages", 0)
 	packageService.AssertNumberOfCalls(t, "GetAll", 0)
-	packageService.AssertNumberOfCalls(t, "UninstallPackage", 0)
+	helmService.AssertNotCalled(t, "UninstallChart", mock.Anything, mock.Anything, mock.Anything)
 	packageService.AssertNumberOfCalls(t, "InstallPackage", 0)
 }
 
 func Test_installCommand_Succeeds_ProceedsWhenFailingToUninstallPackages(t *testing.T) {
 	helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService := initInstallCommand()
-
-	packageService.On("UninstallPackage", mock.Anything).Return(errors.New("test error"))
+	kubernetesService := mockUninstall(helmService, uiService)
+	helmService.ExpectedCalls = slices.DeleteFunc(helmService.ExpectedCalls, func(call *mock.Call) bool { return call.Method == "UninstallChart" })
+	helmService.On("UninstallChart", mock.Anything, mock.Anything, mock.Anything).Return(errors.New("test error"))
 
 	mockSuccessfulInstallFlow(helperService, uiService, configService, packageService)
 
-	err := installCommand(helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService)
+	err := installCommand(helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService, kubernetesService)
 
 	assert.Nil(t, err)
-	uiService.AssertNumberOfCalls(t, "CreateMultiChoose", 1)
-	configService.AssertNumberOfCalls(t, "GetBbeConfig", 1)
-	configService.AssertNumberOfCalls(t, "UpdateBbePackages", 2)
-	packageService.AssertNumberOfCalls(t, "GetAll", 1)
-	packageService.AssertNumberOfCalls(t, "UninstallPackage", 1)
-	packageService.AssertCalled(t, "UninstallPackage", models.LocalPackage{
-		Name:    "package_to_be_removed",
-		Version: "2.0.0",
-	})
+	helmService.AssertCalled(t, "UninstallChart", "package_to_be_removed", "package_to_be_removed", "")
+	kubernetesService.AssertNotCalled(t, "DeleteNamespace", mock.Anything, mock.Anything)
 	packageService.AssertNumberOfCalls(t, "InstallPackage", 2)
-	packageService.AssertCalled(t, "InstallPackage", models.ChartEntry{
-		Name:    "package_always_installed",
-		Version: "1.0.0",
-	}, mock.Anything)
+	// The package that failed to uninstall is still recorded
+	configService.AssertNumberOfCalls(t, "UpdateBbePackages", 1)
+	configService.AssertCalled(t, "UpdateBbePackages", mock.Anything, mock.MatchedBy(func(packages []models.LocalPackage) bool {
+		return slices.ContainsFunc(packages, func(pkg models.LocalPackage) bool { return pkg.Name == "package_to_be_removed" })
+	}))
 }
 
-func Test_installCommand_Fails_WhenFailingToUpdateBbeConfigurationOnUninstall(t *testing.T) {
+func Test_installCommand_Fails_WhenFailingToUpdateBbeConfiguration(t *testing.T) {
 	helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService := initInstallCommand()
+	kubernetesService := mockUninstall(helmService, uiService)
 
 	configService.On("UpdateBbePackages", mock.Anything, mock.Anything).Return(errors.New("test error"))
 
 	mockSuccessfulInstallFlow(helperService, uiService, configService, packageService)
 
-	err := installCommand(helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService)
+	err := installCommand(helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService, kubernetesService)
 
-	assert.NotNil(t, err)
-	uiService.AssertNumberOfCalls(t, "CreateMultiChoose", 1)
-	configService.AssertNumberOfCalls(t, "GetBbeConfig", 1)
-	configService.AssertNumberOfCalls(t, "UpdateBbePackages", 1)
-	packageService.AssertNumberOfCalls(t, "GetAll", 1)
-	packageService.AssertNumberOfCalls(t, "UninstallPackage", 1)
-	packageService.AssertCalled(t, "UninstallPackage", models.LocalPackage{
-		Name:    "package_to_be_removed",
-		Version: "2.0.0",
-	})
-	packageService.AssertNumberOfCalls(t, "InstallPackage", 0)
+	assert.EqualError(t, err, "Failed to install packages: Failed to update BBE configuration: test error")
+	helmService.AssertCalled(t, "UninstallChart", "package_to_be_removed", "package_to_be_removed", "")
+	packageService.AssertNumberOfCalls(t, "InstallPackage", 2)
+	configService.AssertNumberOfCalls(t, "UpdateBbePackages", 2)
 }
 
 func Test_installCommand_Fails_WhenFailingToInstallPackage(t *testing.T) {
 	helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService := initInstallCommand()
+	kubernetesService := mockUninstall(helmService, uiService)
 
 	packageService.On("InstallPackage", mock.Anything, mock.Anything).Return(nil, errors.New("test error"))
 
 	mockSuccessfulInstallFlow(helperService, uiService, configService, packageService)
 
-	err := installCommand(helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService)
+	err := installCommand(helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService, kubernetesService)
 
 	assert.NotNil(t, err)
 	uiService.AssertNumberOfCalls(t, "CreateMultiChoose", 1)
 	configService.AssertNumberOfCalls(t, "GetBbeConfig", 1)
 	configService.AssertNumberOfCalls(t, "UpdateBbePackages", 2)
 	packageService.AssertNumberOfCalls(t, "GetAll", 1)
-	packageService.AssertNumberOfCalls(t, "UninstallPackage", 1)
-	packageService.AssertCalled(t, "UninstallPackage", models.LocalPackage{
-		Name:    "package_to_be_removed",
-		Version: "2.0.0",
-	})
+	helmService.AssertCalled(t, "UninstallChart", "package_to_be_removed", "package_to_be_removed", "")
 	packageService.AssertNumberOfCalls(t, "InstallPackage", 1)
 }
 
 func Test_installCommand_Fails_WhenFailingToUpdateBbeConfigurationOnInstall(t *testing.T) {
 	helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService := initInstallCommand()
+	kubernetesService := mockUninstall(helmService, uiService)
 
 	configService.On("UpdateBbePackages", mock.Anything, mock.Anything).Return(nil).Once()
 	configService.On("UpdateBbePackages", mock.Anything, mock.Anything).Return(errors.New("test error"))
 
 	mockSuccessfulInstallFlow(helperService, uiService, configService, packageService)
 
-	err := installCommand(helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService)
+	err := installCommand(helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService, kubernetesService)
 
 	assert.NotNil(t, err)
 	uiService.AssertNumberOfCalls(t, "CreateMultiChoose", 1)
 	configService.AssertNumberOfCalls(t, "GetBbeConfig", 1)
 	configService.AssertNumberOfCalls(t, "UpdateBbePackages", 2)
 	packageService.AssertNumberOfCalls(t, "GetAll", 1)
-	packageService.AssertNumberOfCalls(t, "UninstallPackage", 1)
-	packageService.AssertCalled(t, "UninstallPackage", models.LocalPackage{
-		Name:    "package_to_be_removed",
-		Version: "2.0.0",
-	})
+	helmService.AssertCalled(t, "UninstallChart", "package_to_be_removed", "package_to_be_removed", "")
 	packageService.AssertNumberOfCalls(t, "InstallPackage", 2)
 }
 
 func Test_installCommand_Succeeds_StoringPackageValues(t *testing.T) {
 	helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService := initInstallCommand()
+	kubernetesService := mockUninstall(helmService, uiService)
 
 	storedValues := map[string]interface{}{"service": map[string]interface{}{"ip": "192.168.1.240"}}
 	enteredValues := map[string]interface{}{"password": "entered"}
@@ -165,7 +149,7 @@ func Test_installCommand_Succeeds_StoringPackageValues(t *testing.T) {
 
 	mockSuccessfulInstallFlow(helperService, uiService, configService, packageService)
 
-	err := installCommand(helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService)
+	err := installCommand(helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService, kubernetesService)
 
 	assert.Nil(t, err)
 	packageService.AssertNumberOfCalls(t, "InstallPackage", 2)
@@ -234,6 +218,17 @@ func mockSuccessfulInstallFlow(_ *mocks.MockHelperService, uiService *mocks.Mock
 			Version: "4.0.0",
 		},
 	}, nil)
-	packageService.On("UninstallPackage", mock.Anything).Return(nil)
 	packageService.On("InstallPackage", mock.Anything, mock.Anything).Return(nil, nil)
+}
+
+// Lets an unticked package be uninstalled: its chart reads as needing nothing, and the deletion is confirmed
+func mockUninstall(helmService *mocks.MockHelmService, uiService *mocks.MockUiService) *mocks.MockKubernetesService {
+	kubernetesService := &mocks.MockKubernetesService{}
+	helmService.On("PullChart", mock.Anything, mock.Anything, mock.Anything).Return(&models.HelmChart{}, nil)
+	helmService.On("UninstallChart", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	uiService.On("CreateSelect", mock.MatchedBy(func(title string) bool { return strings.HasPrefix(title, "Uninstall ") }), []string{"No", "Yes"}).Return("Yes", nil)
+	kubernetesService.On("NamespaceVolumes", mock.Anything, mock.Anything).Return([]models.NamespaceVolume{}, true, nil)
+	kubernetesService.On("DeleteNamespace", mock.Anything, mock.Anything).Return(nil)
+
+	return kubernetesService
 }

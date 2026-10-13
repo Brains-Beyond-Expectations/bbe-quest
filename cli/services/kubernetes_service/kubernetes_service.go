@@ -15,6 +15,7 @@ import (
 
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/misc/command"
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/misc/logger"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/models"
 )
 
 var execCommand = exec.Command
@@ -164,6 +165,62 @@ func writeSecret(context string, namespace string, secret string, data map[strin
 	}
 	if _, err := kubectl(context, manifest, verb, "--filename", "-"); err != nil {
 		return fmt.Errorf("Failed to save secret `%s`: %w", secret, err)
+	}
+
+	return nil
+}
+
+// The volumes claimed in a namespace, and whether the namespace exists
+func (kubernetesService KubernetesService) NamespaceVolumes(context string, namespace string) ([]models.NamespaceVolume, bool, error) {
+	if response, err := kubectl(context, nil, "get", "namespace", namespace, "--output", "name"); err != nil {
+		if strings.Contains(string(response), "NotFound") {
+			return nil, false, nil
+		}
+		return nil, false, fmt.Errorf("Failed to read namespace `%s`: %w", namespace, err)
+	}
+
+	response, err := kubectl(context, nil, "get", "persistentvolumeclaims", "--namespace", namespace, "--output", "json")
+	if err != nil {
+		return nil, true, fmt.Errorf("Failed to read the volumes in namespace `%s`: %w", namespace, err)
+	}
+
+	var claims struct {
+		Items []struct {
+			Metadata struct {
+				Name string `json:"name"`
+			} `json:"metadata"`
+			Spec struct {
+				Resources struct {
+					Requests map[string]string `json:"requests"`
+				} `json:"resources"`
+			} `json:"spec"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(response, &claims); err != nil {
+		return nil, true, fmt.Errorf("Failed to read the volumes in namespace `%s`: %w", namespace, err)
+	}
+
+	volumes := []models.NamespaceVolume{}
+	for _, claim := range claims.Items {
+		volumes = append(volumes, models.NamespaceVolume{Name: claim.Metadata.Name, Size: claim.Spec.Resources.Requests["storage"]})
+	}
+
+	return volumes, true, nil
+}
+
+// Applies a JSON merge patch to a resource in a namespace
+func (kubernetesService KubernetesService) Patch(context string, namespace string, resource string, name string, patch string) error {
+	if _, err := kubectl(context, nil, "patch", resource, name, "--namespace", namespace, "--type", "merge", "--patch", patch); err != nil {
+		return fmt.Errorf("Failed to patch %s `%s`: %w", resource, name, err)
+	}
+
+	return nil
+}
+
+// Deletes a namespace and everything in it, waiting until it's gone, and does nothing when it doesn't exist
+func (kubernetesService KubernetesService) DeleteNamespace(context string, namespace string) error {
+	if _, err := kubectl(context, nil, "delete", "namespace", namespace, "--ignore-not-found", "--wait", "--timeout", "10m"); err != nil {
+		return fmt.Errorf("Failed to delete namespace `%s`: %w", namespace, err)
 	}
 
 	return nil

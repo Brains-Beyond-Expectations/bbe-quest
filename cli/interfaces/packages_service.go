@@ -9,5 +9,4 @@ type PackageServiceInterface interface {
 	InstallPackage(chart models.ChartEntry, values map[string]interface{}, bbeConfig models.BbeConfig, helmService HelmServiceInterface, uiService UiServiceInterface) (map[string]interface{}, error)
 	UpgradePackage(chart models.ChartEntry, values map[string]interface{}, bbeConfig models.BbeConfig, helmService HelmServiceInterface, uiService UiServiceInterface, interactive bool) (map[string]interface{}, error)
 	GetPrerequisites(chart models.ChartEntry, helmService HelmServiceInterface) ([]models.ChartPrerequisite, error)
-	UninstallPackage(chart models.LocalPackage, bbeConfig models.BbeConfig, helmService HelmServiceInterface) error
 }

@@ -129,8 +129,11 @@ func (HelmService HelmService) PullChart(repositoryUrl string, chartName string,
 }
 
 func (HelmService HelmService) UninstallChart(pkgName string, namespace string, context string) error {
+	// Waiting lets the chart's own clean-up, such as Longhorn's, finish before its namespace goes
 	cmd := execCommand("helm", "uninstall", pkgName,
 		"--namespace", namespace,
+		"--wait",
+		"--timeout", "10m",
 		"--kube-context", context)
 
 	if err := cmd.Run(); err != nil {

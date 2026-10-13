@@ -311,3 +311,50 @@ func Test_readChartArchive_Fails_WithInvalidSettings(t *testing.T) {
 		assert.ErrorContains(t, err, expected, annotation)
 	}
 }
+
+func Test_readChartArchive_Succeeds_ReadingWhatUninstallingDeletes(t *testing.T) {
+	archive := filepath.Join(t.TempDir(), "bbe-storage-1.0.0.tgz")
+	writeChartArchive(t, archive, map[string]string{
+		"bbe-storage/Chart.yaml": `name: bbe-storage
+annotations:
+  bbe/uninstall: |
+    namespaces:
+      - longhorn-system
+    patches:
+      - resource: settings.longhorn.io
+        namespace: longhorn-system
+        name: deleting-confirmation-flag
+        patch: '{"value": "true"}'
+    keeps:
+      - Longhorn's directory on each node
+`,
+	})
+
+	chart, err := readChartArchive(archive)
+
+	assert.NoError(t, err)
+	assert.Equal(t, &models.ChartUninstall{
+		Namespaces: []string{"longhorn-system"},
+		Patches:    []models.UninstallPatch{{Resource: "settings.longhorn.io", Namespace: "longhorn-system", Name: "deleting-confirmation-flag", Patch: `{"value": "true"}`}},
+		Keeps:      []string{"Longhorn's directory on each node"},
+	}, chart.Uninstall)
+}
+
+func Test_readChartArchive_Fails_WithAnInvalidUninstall(t *testing.T) {
+	cases := map[string]string{
+		"namespaces: [longhorn":                                  "Failed to parse the bbe/uninstall annotation in bbe-storage/Chart.yaml",
+		"namespaces: [Longhorn_System]":                          "`Longhorn_System` isn't a namespace name",
+		"patches: [{resource: settings.longhorn.io, name: flag}]": "every patch needs a resource, a name and a namespace",
+		"patches: [{resource: settings, name: flag, namespace: longhorn-system, patch: 'value: true'}]": "the patch to settings `flag` isn't JSON",
+	}
+
+	for annotation, expected := range cases {
+		archive := filepath.Join(t.TempDir(), "bbe-storage-1.0.0.tgz")
+		writeChartArchive(t, archive, map[string]string{"bbe-storage/Chart.yaml": "name: bbe-storage\nannotations:\n  bbe/uninstall: |\n    " + annotation + "\n"})
+
+		chart, err := readChartArchive(archive)
+
+		assert.Nil(t, chart, annotation)
+		assert.ErrorContains(t, err, expected, annotation)
+	}
+}

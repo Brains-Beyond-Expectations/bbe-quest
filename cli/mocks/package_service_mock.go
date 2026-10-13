@@ -27,11 +27,6 @@ func (m *MockPackageService) UpgradePackage(pkg models.ChartEntry, values map[st
 	return resolved, args.Error(1)
 }
 
-func (m *MockPackageService) UninstallPackage(pkg models.LocalPackage, bbeConfig models.BbeConfig, helmService interfaces.HelmServiceInterface) error {
-	args := m.Called(pkg)
-	return args.Error(0)
-}
-
 func (m *MockPackageService) GetPrerequisites(pkg models.ChartEntry, helmService interfaces.HelmServiceInterface) ([]models.ChartPrerequisite, error) {
 	args := m.Called(pkg)
 	prerequisites, _ := args.Get(0).([]models.ChartPrerequisite)

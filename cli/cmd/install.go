@@ -11,6 +11,7 @@ import (
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/services/config_service"
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/services/helm_service"
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/services/helper_service"
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/services/kubernetes_service"
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/services/package_service"
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/services/prerequisite_service"
 	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/services/talos_service"
@@ -31,8 +32,9 @@ var installCmd = &cobra.Command{
 		helmService := helm_service.HelmService{}
 		talosService := talos_service.TalosService{}
 		prerequisiteService := prerequisite_service.PrerequisiteService{}
+		kubernetesService := kubernetes_service.KubernetesService{}
 
-		err := installCommand(helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService)
+		err := installCommand(helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService, kubernetesService)
 		if err != nil {
 			logger.Error("", err)
 			os.Exit(1)
@@ -44,7 +46,7 @@ func init() {
 	rootCmd.AddCommand(installCmd)
 }
 
-func installCommand(helperService interfaces.HelperServiceInterface, uiService interfaces.UiServiceInterface, configService interfaces.ConfigServiceInterface, packageService interfaces.PackageServiceInterface, helmService interfaces.HelmServiceInterface, talosService interfaces.TalosServiceInterface, prerequisiteService interfaces.PrerequisiteServiceInterface) error {
+func installCommand(helperService interfaces.HelperServiceInterface, uiService interfaces.UiServiceInterface, configService interfaces.ConfigServiceInterface, packageService interfaces.PackageServiceInterface, helmService interfaces.HelmServiceInterface, talosService interfaces.TalosServiceInterface, prerequisiteService interfaces.PrerequisiteServiceInterface, kubernetesService interfaces.KubernetesServiceInterface) error {
 	bbeConfig, err := configService.GetBbeConfig(helperService)
 	if err != nil || bbeConfig.Bbe.Cluster.Name == "" {
 		logger.Info("No BBE cluster found, please run 'bbe setup' to create your cluster")
@@ -68,9 +70,19 @@ func installCommand(helperService interfaces.HelperServiceInterface, uiService i
 	updatedBbeConfig := *bbeConfig
 	updatedBbeConfig.Bbe.Packages = bbeConfig.Bbe.Packages
 
-	err = uninstallPackages(helperService, configService, packageService, helmService, updatedBbeConfig, packagesToUninstall)
-	if err != nil {
-		return fmt.Errorf("Failed to uninstall packages: %w", err)
+	// Unticking an installed package uninstalls it, once confirmed. The others are still installed when it isn't
+	remover := &packageRemover{
+		helperService:     helperService,
+		uiService:         uiService,
+		configService:     configService,
+		helmService:       helmService,
+		kubernetesService: kubernetesService,
+		bbeConfig:         &updatedBbeConfig,
+		library:           allPackages,
+		charts:            map[string]*models.HelmChart{},
+	}
+	if err := remover.remove(installedNames(packagesToUninstall, updatedBbeConfig.Bbe.Packages)); err != nil {
+		logger.Error("Failed to uninstall packages", err)
 	}
 
 	runner := &prerequisiteRunner{
@@ -125,31 +137,16 @@ func diffPackages(allPackages []models.ChartEntry, chosenPackages []string) (pac
 	return packagesToInstall, packagesToUninstall
 }
 
-func uninstallPackages(helperService interfaces.HelperServiceInterface, configService interfaces.ConfigServiceInterface, packageService interfaces.PackageServiceInterface, helmService interfaces.HelmServiceInterface, updatedBbeConfig models.BbeConfig, uninstalledPackages []models.ChartEntry) error {
-	for _, pkg := range uninstalledPackages {
-		convertToPkg := &models.LocalPackage{
-			Name:    pkg.Name,
-			Version: pkg.Version,
-		}
-
-		for i, existingPkg := range updatedBbeConfig.Bbe.Packages {
-			if existingPkg.Name == pkg.Name {
-				err := packageService.UninstallPackage(*convertToPkg, updatedBbeConfig, helmService)
-				if err != nil {
-					logger.Error("Failed to uninstall package", err)
-					continue
-				}
-				updatedBbeConfig.Bbe.Packages = slices.Delete(updatedBbeConfig.Bbe.Packages, i, i+1)
-				break
-			}
+// The packages that are installed, of those given
+func installedNames(packages []models.ChartEntry, installed []models.LocalPackage) []string {
+	names := []string{}
+	for _, pkg := range packages {
+		if slices.ContainsFunc(installed, func(local models.LocalPackage) bool { return local.Name == pkg.Name }) {
+			names = append(names, pkg.Name)
 		}
 	}
-	err := configService.UpdateBbePackages(helperService, updatedBbeConfig.Bbe.Packages)
-	if err != nil {
-		return fmt.Errorf("Failed to update BBE configuration: %w", err)
-	}
 
-	return nil
+	return names
 }
 
 func installPackages(helperService interfaces.HelperServiceInterface, uiService interfaces.UiServiceInterface, configService interfaces.ConfigServiceInterface, packageService interfaces.PackageServiceInterface, helmService interfaces.HelmServiceInterface, runner *prerequisiteRunner, updatedBbeConfig models.BbeConfig, installedPackages []models.ChartEntry) error {

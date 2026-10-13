@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Brains-Beyond-Expectations/bbe-quest/cli/models"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -192,4 +193,84 @@ func Test_RemoveSecretValues_Succeeds_WithoutTheSecret(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.Len(t, *calls, 1)
+}
+
+func Test_NamespaceVolumes_Succeeds(t *testing.T) {
+	calls := fakeKubectl(t, map[string]string{
+		"get namespace": "echo namespace/bbe-media",
+		"get persistentvolumeclaims": `printf '%s' '{"items": [{"metadata": {"name": "bbe-media-sonarr-config"}, "spec": {"resources": {"requests": {"storage": "1Gi"}}}}]}'`,
+	})
+
+	volumes, exists, err := KubernetesService{}.NamespaceVolumes("context", "bbe-media")
+
+	assert.NoError(t, err)
+	assert.True(t, exists)
+	assert.Equal(t, []models.NamespaceVolume{{Name: "bbe-media-sonarr-config", Size: "1Gi"}}, volumes)
+	assert.Equal(t, "get persistentvolumeclaims --namespace bbe-media --output json --context context", (*calls)[1].args)
+}
+
+func Test_NamespaceVolumes_Succeeds_WithoutTheNamespace(t *testing.T) {
+	fakeKubectl(t, map[string]string{"get namespace": `echo 'Error from server (NotFound): namespaces "bbe-media" not found' >&2; exit 1`})
+
+	volumes, exists, err := KubernetesService{}.NamespaceVolumes("context", "bbe-media")
+
+	assert.NoError(t, err)
+	assert.False(t, exists)
+	assert.Nil(t, volumes)
+}
+
+func Test_NamespaceVolumes_Fails(t *testing.T) {
+	cases := map[string]map[string]string{
+		"Failed to read namespace `bbe-media`": {"get namespace": `echo 'Error from server (Forbidden)' >&2; exit 1`},
+		"Failed to read the volumes in namespace `bbe-media`: exit status 1": {
+			"get namespace":              "echo namespace/bbe-media",
+			"get persistentvolumeclaims": `echo 'Error from server (Forbidden)' >&2; exit 1`,
+		},
+		"Failed to read the volumes in namespace `bbe-media`: invalid character": {
+			"get namespace":              "echo namespace/bbe-media",
+			"get persistentvolumeclaims": "echo 'not json'",
+		},
+	}
+
+	for expected, answers := range cases {
+		fakeKubectl(t, answers)
+
+		_, _, err := KubernetesService{}.NamespaceVolumes("context", "bbe-media")
+
+		assert.ErrorContains(t, err, expected, expected)
+	}
+}
+
+func Test_Patch_Succeeds(t *testing.T) {
+	calls := fakeKubectl(t, map[string]string{"patch": "true"})
+
+	err := KubernetesService{}.Patch("context", "longhorn-system", "settings.longhorn.io", "deleting-confirmation-flag", `{"value": "true"}`)
+
+	assert.NoError(t, err)
+	assert.Equal(t, `patch settings.longhorn.io deleting-confirmation-flag --namespace longhorn-system --type merge --patch {"value": "true"} --context context`, (*calls)[0].args)
+}
+
+func Test_Patch_Fails(t *testing.T) {
+	fakeKubectl(t, map[string]string{"patch": `echo 'Error from server (NotFound)' >&2; exit 1`})
+
+	err := KubernetesService{}.Patch("context", "longhorn-system", "settings.longhorn.io", "deleting-confirmation-flag", `{}`)
+
+	assert.EqualError(t, err, "Failed to patch settings.longhorn.io `deleting-confirmation-flag`: exit status 1\nError from server (NotFound)")
+}
+
+func Test_DeleteNamespace_Succeeds(t *testing.T) {
+	calls := fakeKubectl(t, map[string]string{"delete namespace": "true"})
+
+	err := KubernetesService{}.DeleteNamespace("context", "bbe-media")
+
+	assert.NoError(t, err)
+	assert.Equal(t, "delete namespace bbe-media --ignore-not-found --wait --timeout 10m --context context", (*calls)[0].args)
+}
+
+func Test_DeleteNamespace_Fails(t *testing.T) {
+	fakeKubectl(t, map[string]string{"delete namespace": `echo 'error: timed out waiting for the condition' >&2; exit 1`})
+
+	err := KubernetesService{}.DeleteNamespace("context", "bbe-media")
+
+	assert.EqualError(t, err, "Failed to delete namespace `bbe-media`: exit status 1\nerror: timed out waiting for the condition")
 }
