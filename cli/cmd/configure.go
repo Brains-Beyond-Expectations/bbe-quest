@@ -350,14 +350,8 @@ func (editor *settingEditor) remove() error {
 	return nil
 }
 
-// What names an entry: its unique field, or the name it was given when added from a catalog
 func (editor *settingEditor) entryLabel(entry map[string]interface{}) string {
-	for _, field := range editor.setting.Fields {
-		if field.Unique {
-			return fmt.Sprint(entry[field.Name])
-		}
-	}
-	return fmt.Sprint(entry["name"])
+	return editor.setting.EntryLabel(entry)
 }
 
 // An entry as it's listed, with what it was added with besides its credentials

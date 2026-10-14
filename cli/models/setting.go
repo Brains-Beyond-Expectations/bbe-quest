@@ -1,5 +1,7 @@
 package models
 
+import "fmt"
+
 // A list in a chart's values that `bbe configure` adds entries to and removes them from, declared in its Chart.yaml
 // under the `bbe/settings` annotation
 type ChartSetting struct {
@@ -13,6 +15,18 @@ type ChartSetting struct {
 	Catalog *SettingCatalog `yaml:"catalog"`
 	// What bbe asks for to add an entry, for a setting without a catalog to look it up in
 	Fields []SettingField `yaml:"fields"`
+	// Entries bbe offers to start with, when installing or upgrading a package whose values don't list any yet
+	Suggested []map[string]interface{} `yaml:"suggested"`
+}
+
+// What names an entry: its unique field, or the name it was given when added from a catalog
+func (setting ChartSetting) EntryLabel(entry map[string]interface{}) string {
+	for _, field := range setting.Fields {
+		if field.Unique {
+			return fmt.Sprint(entry[field.Name])
+		}
+	}
+	return fmt.Sprint(entry["name"])
 }
 
 // One thing bbe asks for when adding an entry, stored under its name in the entry

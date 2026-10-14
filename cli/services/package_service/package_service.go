@@ -139,6 +139,11 @@ func (packageService PackageService) InstallPackage(chart models.ChartEntry, val
 		return nil, err
 	}
 
+	values, err = offerSuggestedEntries(chart, helmChart, values, uiService, true)
+	if err != nil {
+		return nil, err
+	}
+
 	chartName, repoName, version, err := chartSource(chart, helmService)
 	if err != nil {
 		return nil, err
@@ -173,6 +178,11 @@ func (packageService PackageService) UpgradePackage(chart models.ChartEntry, val
 	}
 
 	values, err = resolveValues(chart, helmChart, values, uiService, interactive)
+	if err != nil {
+		return nil, err
+	}
+
+	values, err = offerSuggestedEntries(chart, helmChart, values, uiService, interactive)
 	if err != nil {
 		return nil, err
 	}
@@ -222,6 +232,44 @@ func prepareNamespace(chart models.ChartEntry, helmChart *models.HelmChart, bbeC
 	}
 
 	return helmService.PrepareNamespace(chart.Name, bbeConfig.Bbe.Cluster.Context, helmChart.PodSecurity)
+}
+
+// Offers the entries a chart suggests for a setting whose list the values don't set yet, such as bbe-media's
+// indexers. The answer is kept either way, a "no" as an empty list, so it's only asked once. Without asking, nothing is
+// added, as the user hasn't chosen
+func offerSuggestedEntries(chart models.ChartEntry, helmChart *models.HelmChart, values map[string]interface{}, uiService interfaces.UiServiceInterface, interactive bool) (map[string]interface{}, error) {
+	if !interactive {
+		return values, nil
+	}
+
+	for _, setting := range helmChart.Settings {
+		path := strings.Split(setting.Values, ".")
+		if len(setting.Suggested) == 0 || lookupValue(values, path) != nil {
+			continue
+		}
+
+		labels := []string{}
+		for _, entry := range setting.Suggested {
+			labels = append(labels, setting.EntryLabel(entry))
+		}
+		answer, err := uiService.CreateSelect(fmt.Sprintf("Package `%s` suggests %d %s to start with: %s. Add them? You can change them later with `bbe configure %s`", chart.Name, len(labels), setting.Name, strings.Join(labels, ", "), chart.Name), []string{"Yes", "No"})
+		if err != nil {
+			return nil, err
+		}
+
+		entries := []interface{}{}
+		if answer == "Yes" {
+			for _, entry := range setting.Suggested {
+				entries = append(entries, entry)
+			}
+		}
+		if values == nil {
+			values = map[string]interface{}{}
+		}
+		setValue(values, path, entries)
+	}
+
+	return values, nil
 }
 
 // Helm only installs CRDs from a chart's crds/ folder on its first install, so bbe applies them before every install

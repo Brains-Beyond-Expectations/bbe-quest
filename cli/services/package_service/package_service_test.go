@@ -694,3 +694,95 @@ func Test_InstallPackage_Fails_WhenTheCrdsCannotBeApplied(t *testing.T) {
 	assert.EqualError(t, err, "Mock failed to apply")
 	mockHelmService.AssertNotCalled(t, "InstallChart", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
+
+// A chart suggesting two indexers to start with
+func chartSuggesting() *models.HelmChart {
+	return &models.HelmChart{
+		Name: "bbe-media",
+		Settings: []models.ChartSetting{{
+			Name:   "indexers",
+			Values: "bbe.media.prowlarr.indexers",
+			Suggested: []map[string]interface{}{
+				{"name": "1337x", "definition": "1337x"},
+				{"name": "EZTV", "definition": "eztv"},
+			},
+		}},
+	}
+}
+
+const suggestionTitle = "Package `bbe-media` suggests 2 indexers to start with: 1337x, EZTV. Add them? You can change them later with `bbe configure bbe-media`"
+
+func Test_UpgradePackage_Succeeds_AddingTheSuggestedEntriesTheUserAccepts(t *testing.T) {
+	mockHelmService := &mocks.MockHelmService{}
+	mockHelmService.On("IsPackageInstalled", mock.Anything, mock.Anything, mock.Anything).Return(true)
+	mockHelmService.On("PullChart", mock.Anything, mock.Anything, mock.Anything).Return(chartSuggesting(), nil)
+	mockHelmService.On("AddRepo", mock.Anything, mock.Anything).Return(nil)
+	mockHelmService.On("UpgradeChart", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	mockUiService := &mocks.MockUiService{}
+	mockUiService.On("CreateSelect", suggestionTitle, []string{"Yes", "No"}).Return("Yes", nil)
+
+	values, err := PackageService{}.UpgradePackage(models.ChartEntry{Name: "bbe-media"}, map[string]interface{}{"bbe": map[string]interface{}{"admin": "admin"}}, models.BbeConfig{}, mockHelmService, mockUiService, true)
+
+	assert.NoError(t, err)
+	assert.Equal(t, map[string]interface{}{"bbe": map[string]interface{}{
+		"admin": "admin",
+		"media": map[string]interface{}{"prowlarr": map[string]interface{}{"indexers": []interface{}{
+			map[string]interface{}{"name": "1337x", "definition": "1337x"},
+			map[string]interface{}{"name": "EZTV", "definition": "eztv"},
+		}}},
+	}}, values)
+}
+
+func Test_InstallPackage_Succeeds_RecordingThatTheUserDeclinedTheSuggestedEntries(t *testing.T) {
+	mockHelmService := &mocks.MockHelmService{}
+	mockHelmService.On("IsPackageInstalled", mock.Anything, mock.Anything, mock.Anything).Return(false)
+	mockHelmService.On("PullChart", mock.Anything, mock.Anything, mock.Anything).Return(chartSuggesting(), nil)
+	mockHelmService.On("AddRepo", mock.Anything, mock.Anything).Return(nil)
+	mockHelmService.On("InstallChart", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	mockUiService := &mocks.MockUiService{}
+	mockUiService.On("CreateSelect", suggestionTitle, []string{"Yes", "No"}).Return("No", nil)
+
+	values, err := PackageService{}.InstallPackage(models.ChartEntry{Name: "bbe-media"}, nil, models.BbeConfig{}, mockHelmService, mockUiService)
+
+	assert.NoError(t, err)
+	assert.Equal(t, map[string]interface{}{"bbe": map[string]interface{}{"media": map[string]interface{}{"prowlarr": map[string]interface{}{"indexers": []interface{}{}}}}}, values)
+}
+
+func Test_UpgradePackage_Succeeds_WithoutAskingAboutSuggestedEntries(t *testing.T) {
+	cases := map[string]struct {
+		values      map[string]interface{}
+		interactive bool
+	}{
+		"already answered": {map[string]interface{}{"bbe": map[string]interface{}{"media": map[string]interface{}{"prowlarr": map[string]interface{}{"indexers": []interface{}{}}}}}, true},
+		"not interactive":  {nil, false},
+	}
+
+	for name, c := range cases {
+		mockHelmService := &mocks.MockHelmService{}
+		mockHelmService.On("IsPackageInstalled", mock.Anything, mock.Anything, mock.Anything).Return(true)
+		mockHelmService.On("PullChart", mock.Anything, mock.Anything, mock.Anything).Return(chartSuggesting(), nil)
+		mockHelmService.On("AddRepo", mock.Anything, mock.Anything).Return(nil)
+		mockHelmService.On("UpgradeChart", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		mockUiService := &mocks.MockUiService{}
+
+		values, err := PackageService{}.UpgradePackage(models.ChartEntry{Name: "bbe-media"}, c.values, models.BbeConfig{}, mockHelmService, mockUiService, c.interactive)
+
+		assert.NoError(t, err, name)
+		assert.Equal(t, normalizeValues(c.values), values, name)
+		mockUiService.AssertNotCalled(t, "CreateSelect", mock.Anything, mock.Anything)
+	}
+}
+
+func Test_UpgradePackage_Fails_WhenTheSuggestionPromptFails(t *testing.T) {
+	mockHelmService := &mocks.MockHelmService{}
+	mockHelmService.On("IsPackageInstalled", mock.Anything, mock.Anything, mock.Anything).Return(true)
+	mockHelmService.On("PullChart", mock.Anything, mock.Anything, mock.Anything).Return(chartSuggesting(), nil)
+	mockUiService := &mocks.MockUiService{}
+	mockUiService.On("CreateSelect", mock.Anything, mock.Anything).Return("", errors.New("Mock prompt failed"))
+
+	values, err := PackageService{}.UpgradePackage(models.ChartEntry{Name: "bbe-media"}, nil, models.BbeConfig{}, mockHelmService, mockUiService, true)
+
+	assert.Nil(t, values)
+	assert.EqualError(t, err, "Mock prompt failed")
+	mockHelmService.AssertNotCalled(t, "UpgradeChart", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}

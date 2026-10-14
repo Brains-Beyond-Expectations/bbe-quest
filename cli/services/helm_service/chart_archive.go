@@ -237,6 +237,15 @@ func parseSettings(annotation string) ([]models.ChartSetting, error) {
 		if setting.Catalog != nil && len(setting.Fields) > 0 {
 			return nil, fmt.Errorf("setting `%s` has both a catalog and fields, but can only add entries from one", setting.Name)
 		}
+		for _, entry := range setting.Suggested {
+			if label := setting.EntryLabel(entry); label == "" || label == "<nil>" {
+				return nil, fmt.Errorf("every suggested entry of setting `%s` needs a name", setting.Name)
+			}
+			// They're written to bbe.yaml, with nothing in the setting's secret
+			if _, secret := entry["secretFields"]; secret {
+				return nil, fmt.Errorf("suggested entry `%s` of setting `%s` can't have credentials", setting.EntryLabel(entry), setting.Name)
+			}
+		}
 		if len(setting.Fields) > 0 {
 			if err := validateSettingFields(setting); err != nil {
 				return nil, err
