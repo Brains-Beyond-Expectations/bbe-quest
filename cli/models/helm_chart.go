@@ -10,7 +10,9 @@ type HelmChart struct {
 	PodSecurity   string // A pod security standard level, empty to keep the cluster's default
 	Settings      []ChartSetting
 	Uninstall     *ChartUninstall
-	Crds          []string // The manifests in the chart's crds/ folder, which helm only installs on a first install
+	// Value paths, such as `bbe.media.seeding`, that bbe records in bbe.yaml with the chart's defaults when missing
+	RecordedValues []string
+	Crds           []string // The manifests in the chart's crds/ folder, which helm only installs on a first install
 }
 
 type HelmChartMetadata struct {

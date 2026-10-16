@@ -139,6 +139,8 @@ func (packageService PackageService) InstallPackage(chart models.ChartEntry, val
 		return nil, err
 	}
 
+	values = recordDefaults(helmChart, values)
+
 	values, err = offerSuggestedEntries(chart, helmChart, values, uiService, true)
 	if err != nil {
 		return nil, err
@@ -181,6 +183,8 @@ func (packageService PackageService) UpgradePackage(chart models.ChartEntry, val
 	if err != nil {
 		return nil, err
 	}
+
+	values = recordDefaults(helmChart, values)
 
 	values, err = offerSuggestedEntries(chart, helmChart, values, uiService, interactive)
 	if err != nil {

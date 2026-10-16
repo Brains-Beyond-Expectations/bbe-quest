@@ -110,6 +110,12 @@ func parseChart(files map[string][]byte, dir string) (*models.HelmChart, error) 
 		}
 	}
 
+	recorded, err := parseRecordedValues(metadata.Annotations[constants.RecordedValuesAnnotation], chart.Values)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to parse the %s annotation in %s/Chart.yaml: %w", constants.RecordedValuesAnnotation, dir, err)
+	}
+	chart.RecordedValues = recorded
+
 	// Helm still validates the values if bbe can't read the schema, so carry on without it
 	if content, found := files[dir+"/values.schema.json"]; found {
 		var schema models.HelmChartSchema
@@ -212,6 +218,44 @@ func parsePrerequisites(annotation string) ([]models.ChartPrerequisite, error) {
 	}
 
 	return prerequisites, nil
+}
+
+// The value paths a chart has bbe record, each of which its values.yaml has to set, as that's what bbe records
+func parseRecordedValues(annotation string, values map[string]interface{}) ([]string, error) {
+	if strings.TrimSpace(annotation) == "" {
+		return nil, nil
+	}
+
+	var paths []string
+	if err := yaml.Unmarshal([]byte(annotation), &paths); err != nil {
+		return nil, err
+	}
+
+	for _, valuePath := range paths {
+		if slices.Contains(strings.Split(valuePath, "."), "") {
+			return nil, fmt.Errorf("`%s` isn't a value path", valuePath)
+		}
+		if !hasValue(values, strings.Split(valuePath, ".")) {
+			return nil, fmt.Errorf("`%s` isn't set in values.yaml", valuePath)
+		}
+	}
+
+	return paths, nil
+}
+
+func hasValue(values map[string]interface{}, valuePath []string) bool {
+	var current interface{} = values
+	for _, key := range valuePath {
+		nested, isMap := current.(map[string]interface{})
+		if !isMap {
+			return false
+		}
+		if current, isMap = nested[key]; !isMap {
+			return false
+		}
+	}
+
+	return current != nil
 }
 
 // The catalogs bbe knows how to read

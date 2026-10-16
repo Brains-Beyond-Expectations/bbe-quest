@@ -786,3 +786,60 @@ func Test_UpgradePackage_Fails_WhenTheSuggestionPromptFails(t *testing.T) {
 	assert.EqualError(t, err, "Mock prompt failed")
 	mockHelmService.AssertNotCalled(t, "UpgradeChart", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
+
+// A chart that has bbe record how it seeds, and FlareSolverr's concurrency
+func chartRecording() *models.HelmChart {
+	return &models.HelmChart{
+		Values: map[string]interface{}{"bbe": map[string]interface{}{"media": map[string]interface{}{
+			"seeding":      map[string]interface{}{"maxRatio": 2, "removeWhenDone": true},
+			"flaresolverr": map[string]interface{}{"concurrency": 1, "enabled": true},
+		}}},
+		RecordedValues: []string{"bbe.media.seeding", "bbe.media.flaresolverr.concurrency"},
+	}
+}
+
+func Test_InstallPackage_Succeeds_RecordingTheChartsDefaults(t *testing.T) {
+	mockHelmService := &mocks.MockHelmService{}
+	mockHelmService.On("IsPackageInstalled", mock.Anything, mock.Anything, mock.Anything).Return(false)
+	mockHelmService.On("PullChart", mock.Anything, mock.Anything, mock.Anything).Return(chartRecording(), nil)
+	mockHelmService.On("AddRepo", mock.Anything, mock.Anything).Return(nil)
+	mockHelmService.On("InstallChart", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+	bbeConfig := models.BbeConfig{}
+	chart := models.ChartEntry{Name: "bbe-media", Version: "0.2.0", RepositoryName: "bbe", RepositoryUrl: "https://example.com/charts"}
+	values, err := PackageService{}.InstallPackage(chart, nil, bbeConfig, mockHelmService, &mocks.MockUiService{})
+
+	// Only what the chart lists is recorded, not the rest of its defaults
+	expected := map[string]interface{}{"bbe": map[string]interface{}{"media": map[string]interface{}{
+		"seeding":      map[string]interface{}{"maxRatio": 2, "removeWhenDone": true},
+		"flaresolverr": map[string]interface{}{"concurrency": 1},
+	}}}
+	assert.NoError(t, err)
+	assert.Equal(t, expected, values)
+	mockHelmService.AssertCalled(t, "InstallChart", "bbe-media", "bbe-media", "bbe", "0.2.0", "bbe-media", "", expected)
+}
+
+func Test_UpgradePackage_Succeeds_KeepingRecordedValuesThatWereChanged(t *testing.T) {
+	mockHelmService := &mocks.MockHelmService{}
+	mockHelmService.On("IsPackageInstalled", mock.Anything, mock.Anything, mock.Anything).Return(true)
+	mockHelmService.On("PullChart", mock.Anything, mock.Anything, mock.Anything).Return(chartRecording(), nil)
+	mockHelmService.On("AddRepo", mock.Anything, mock.Anything).Return(nil)
+	mockHelmService.On("UpgradeChart", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+	installed := map[string]interface{}{"bbe": map[string]interface{}{"media": map[string]interface{}{
+		"seeding":      map[string]interface{}{"maxRatio": 3},
+		"flaresolverr": map[string]interface{}{"concurrency": 2},
+		"nfs":          map[string]interface{}{"server": "192.168.1.10"},
+	}}}
+	bbeConfig := models.BbeConfig{}
+	chart := models.ChartEntry{Name: "bbe-media", Version: "0.2.1", RepositoryName: "bbe", RepositoryUrl: "https://example.com/charts"}
+	values, err := PackageService{}.UpgradePackage(chart, installed, bbeConfig, mockHelmService, &mocks.MockUiService{}, false)
+
+	expected := map[string]interface{}{"bbe": map[string]interface{}{"media": map[string]interface{}{
+		"seeding":      map[string]interface{}{"maxRatio": 3, "removeWhenDone": true},
+		"flaresolverr": map[string]interface{}{"concurrency": 2},
+		"nfs":          map[string]interface{}{"server": "192.168.1.10"},
+	}}}
+	assert.NoError(t, err)
+	assert.Equal(t, expected, values)
+}

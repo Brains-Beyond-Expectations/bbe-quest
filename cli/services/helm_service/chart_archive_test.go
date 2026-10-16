@@ -488,3 +488,44 @@ func Test_readChartArchive_Fails_WithInvalidSuggestedEntries(t *testing.T) {
 		assert.ErrorContains(t, err, expected, annotation)
 	}
 }
+
+func Test_readChartArchive_Succeeds_ReadingTheValuesToRecord(t *testing.T) {
+	archive := filepath.Join(t.TempDir(), "bbe-media-1.0.0.tgz")
+	writeChartArchive(t, archive, map[string]string{
+		"bbe-media/Chart.yaml": `name: bbe-media
+annotations:
+  bbe/recorded-values: |
+    - bbe.media.seeding
+    - bbe.media.flaresolverr.concurrency
+`,
+		"bbe-media/values.yaml": "bbe:\n  media:\n    seeding:\n      maxRatio: 2\n    flaresolverr:\n      concurrency: 1\n",
+	})
+
+	chart, err := readChartArchive(archive)
+
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"bbe.media.seeding", "bbe.media.flaresolverr.concurrency"}, chart.RecordedValues)
+}
+
+func Test_readChartArchive_Fails_WithValuesToRecordItDoesNotSet(t *testing.T) {
+	cases := map[string]string{
+		"[bbe.media":             "Failed to parse the bbe/recorded-values annotation in bbe-media/Chart.yaml",
+		"[bbe..seeding]":         "`bbe..seeding` isn't a value path",
+		"[bbe.media.missing]":    "`bbe.media.missing` isn't set in values.yaml",
+		"[bbe.media.seeding.on]": "`bbe.media.seeding.on` isn't set in values.yaml",
+		"[bbe.media.nothing]":    "`bbe.media.nothing` isn't set in values.yaml",
+	}
+
+	for annotation, expected := range cases {
+		archive := filepath.Join(t.TempDir(), "bbe-media-1.0.0.tgz")
+		writeChartArchive(t, archive, map[string]string{
+			"bbe-media/Chart.yaml":  "name: bbe-media\nannotations:\n  bbe/recorded-values: |\n    " + annotation + "\n",
+			"bbe-media/values.yaml": "bbe:\n  media:\n    seeding: 2\n    nothing: null\n",
+		})
+
+		chart, err := readChartArchive(archive)
+
+		assert.Nil(t, chart, annotation)
+		assert.ErrorContains(t, err, expected, annotation)
+	}
+}
