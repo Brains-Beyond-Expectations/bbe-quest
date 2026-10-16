@@ -50,6 +50,43 @@ func resolveValues(chart models.ChartEntry, helmChart *models.HelmChart, values 
 	return resolved, nil
 }
 
+// Returns `values` with the chart's defaults for the values it has bbe record, wherever they aren't set yet. A value
+// that's a map gets the keys it's missing, so one changed in bbe.yaml is kept, and the others are recorded too
+func recordDefaults(chart *models.HelmChart, values map[string]interface{}) map[string]interface{} {
+	if len(chart.RecordedValues) == 0 {
+		return values
+	}
+
+	recorded := normalizeValues(values)
+	if recorded == nil {
+		recorded = map[string]interface{}{}
+	}
+	defaults := normalizeValues(chart.Values)
+	for _, valuePath := range chart.RecordedValues {
+		keys := strings.Split(valuePath, ".")
+		setValue(recorded, keys, withDefaults(lookupValue(recorded, keys), lookupValue(defaults, keys)))
+	}
+
+	return recorded
+}
+
+func withDefaults(value interface{}, defaults interface{}) interface{} {
+	if value == nil {
+		return defaults
+	}
+
+	valueMap, isMap := value.(map[string]interface{})
+	defaultsMap, defaultsIsMap := defaults.(map[string]interface{})
+	if !isMap || !defaultsIsMap {
+		return value
+	}
+	for key, nested := range defaultsMap {
+		valueMap[key] = withDefaults(valueMap[key], nested)
+	}
+
+	return valueMap
+}
+
 // Checks the chart's schema and those of the charts it depends on, like helm does before installing
 func findMissingValues(chart *models.HelmChart, values map[string]interface{}) []models.RequiredChartValue {
 	var missing []models.RequiredChartValue
@@ -124,6 +161,17 @@ func coalesceValues(chart *models.HelmChart, values map[string]interface{}) map[
 	}
 
 	return coalesced
+}
+
+// The CRDs of the chart and of the charts it depends on that are enabled, as helm collects them, from coalesced values
+func chartCrds(chart *models.HelmChart, values map[string]interface{}) []string {
+	crds := slices.Clone(chart.Crds)
+	for _, dependency := range enabledDependencies(chart, values) {
+		dependencyValues, _ := values[dependencyKey(dependency)].(map[string]interface{})
+		crds = append(crds, chartCrds(dependency.Chart, dependencyValues)...)
+	}
+
+	return crds
 }
 
 func mergeValues(base map[string]interface{}, override map[string]interface{}) map[string]interface{} {

@@ -1,5 +1,7 @@
 package models
 
+import "fmt"
+
 // A list in a chart's values that `bbe configure` adds entries to and removes them from, declared in its Chart.yaml
 // under the `bbe/settings` annotation
 type ChartSetting struct {
@@ -11,6 +13,43 @@ type ChartSetting struct {
 	Secret string `yaml:"secret"`
 	// Where bbe looks up what can be added
 	Catalog *SettingCatalog `yaml:"catalog"`
+	// What bbe asks for to add an entry, for a setting without a catalog to look it up in
+	Fields []SettingField `yaml:"fields"`
+	// Entries bbe offers to start with, when installing or upgrading a package whose values don't list any yet
+	Suggested []map[string]interface{} `yaml:"suggested"`
+}
+
+// What names an entry: its unique field, or the name it was given when added from a catalog
+func (setting ChartSetting) EntryLabel(entry map[string]interface{}) string {
+	for _, field := range setting.Fields {
+		if field.Unique {
+			return fmt.Sprint(entry[field.Name])
+		}
+	}
+	return fmt.Sprint(entry["name"])
+}
+
+// One thing bbe asks for when adding an entry, stored under its name in the entry
+type SettingField struct {
+	Name        string `yaml:"name"`
+	Label       string `yaml:"label"`
+	Description string `yaml:"description"`
+	// A regular expression the value has to match
+	Pattern  string `yaml:"pattern"`
+	Optional bool   `yaml:"optional"`
+	// No two entries have the same value, which names the entry. A setting with fields has one
+	Unique bool `yaml:"unique"`
+	// The values to choose from, instead of typing one
+	Options []SettingFieldOption `yaml:"options"`
+	// bbe generates the value, a random password, and shows it once it's saved
+	Generate bool `yaml:"generate"`
+	// Kept in the setting's secret instead of bbe.yaml
+	Secret bool `yaml:"secret"`
+}
+
+type SettingFieldOption struct {
+	Name  string      `yaml:"name"`
+	Value interface{} `yaml:"value"`
 }
 
 type SettingCatalog struct {

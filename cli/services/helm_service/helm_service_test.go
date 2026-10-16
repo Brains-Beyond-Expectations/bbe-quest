@@ -13,6 +13,11 @@ import (
 
 var originalYamlMarshal = yamlMarshal
 
+// The tests fake every helm command, so helm's version is only checked by the tests that ask for it
+func init() {
+	helmVersionChecked = true
+}
+
 func Test_Helm_Service_Fails_Add_Repo(t *testing.T) {
 	// Set the mock execCommand to return a mocked Command
 	execCommand = func(_ string, _ ...string) *exec.Cmd {
@@ -484,4 +489,83 @@ func Test_Helm_Service_UnInstall_Waits_For_The_Release(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.Equal(t, []string{"uninstall", "bbe-storage", "--namespace", "bbe-storage", "--wait", "--timeout", "10m", "--kube-context", "context"}, receivedArgs)
+}
+
+func Test_Helm_Service_Succeeds_Apply_Crds(t *testing.T) {
+	stdin := filepath.Join(t.TempDir(), "stdin")
+	var receivedArgs []string
+	execCommand = func(name string, args ...string) *exec.Cmd {
+		receivedArgs = append([]string{name}, args...)
+		return exec.Command("sh", "-c", `cat > "$0"`, stdin)
+	}
+
+	err := HelmService{}.ApplyCrds("context", []string{"kind: A", "kind: B"})
+
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"kubectl", "apply", "--server-side", "--force-conflicts", "--field-manager", "bbe", "-f", "-", "--context", "context"}, receivedArgs)
+	content, _ := os.ReadFile(stdin)
+	assert.Equal(t, "kind: A\n---\nkind: B", string(content))
+}
+
+func Test_Helm_Service_Fails_Apply_Crds(t *testing.T) {
+	execCommand = func(_ string, _ ...string) *exec.Cmd {
+		return exec.Command("sh", "-c", `echo 'Error from server (Forbidden)'; exit 1`)
+	}
+
+	err := HelmService{}.ApplyCrds("context", []string{"kind: A"})
+
+	assert.EqualError(t, err, "Failed to apply the CRDs of this package: exit status 1\nError from server (Forbidden)")
+}
+
+func Test_Helm_Service_Fails_Apply_Crds_Without_Kubectl(t *testing.T) {
+	execCommand = func(_ string, _ ...string) *exec.Cmd {
+		return exec.Command("bbe-missing-kubectl")
+	}
+
+	err := HelmService{}.ApplyCrds("context", []string{"kind: A"})
+
+	assert.EqualError(t, err, "kubectl is needed to apply the CRDs of this package, please install it")
+}
+
+func Test_Helm_Service_Fails_Pull_Chart_When_Helm_Is_Too_Old(t *testing.T) {
+	helmVersionChecked = false
+	defer func() { helmVersionChecked = true }()
+	var commands [][]string
+	execCommand = func(name string, args ...string) *exec.Cmd {
+		commands = append(commands, append([]string{name}, args...))
+		return exec.Command("echo", "v3.9.4")
+	}
+
+	_, err := HelmService{}.PullChart("https://example.com", "chartName", "1.0.0")
+
+	assert.EqualError(t, err, "helm v3.9.4 is too old for bbe's packages, please upgrade it to v3.10.0 or newer")
+	assert.Equal(t, [][]string{{"helm", "version", "--template", "{{.Version}}"}}, commands)
+}
+
+func Test_Helm_Service_Checks_The_Helm_Version_Once(t *testing.T) {
+	cases := map[string]*exec.Cmd{
+		"new enough":    exec.Command("echo", "v3.22.0"),
+		"not a version": exec.Command("echo", "development"),
+		"not readable":  exec.Command("false"),
+	}
+
+	for name, versionCommand := range cases {
+		helmVersionChecked = false
+		versionChecks := 0
+		execCommand = func(_ string, args ...string) *exec.Cmd {
+			if args[0] == "version" {
+				versionChecks++
+				return versionCommand
+			}
+			return exec.Command("false")
+		}
+
+		_, err := HelmService{}.PullChart("https://example.com", "chartName", "1.0.0")
+		_, _ = HelmService{}.PullChart("https://example.com", "chartName", "1.0.0")
+
+		// The pull itself fails here, past the version check
+		assert.ErrorContains(t, err, "Failed to pull helm chart `chartName`", name)
+		assert.Equal(t, 1, versionChecks, name)
+	}
+	helmVersionChecked = true
 }

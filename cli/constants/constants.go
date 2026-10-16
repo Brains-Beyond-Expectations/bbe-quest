@@ -19,6 +19,9 @@ var PodSecurityAnnotation = "bbe/pod-security"
 var SettingsAnnotation = "bbe/settings"
 // The Chart.yaml annotation listing what else bbe deletes when uninstalling a chart
 var UninstallAnnotation = "bbe/uninstall"
+// The Chart.yaml annotation listing the values bbe writes into bbe.yaml with the chart's defaults, so a cluster set up
+// from that file behaves the same however the chart's defaults change
+var RecordedValuesAnnotation = "bbe/recorded-values"
 const DefaultBbeLibraryUrl = "https://raw.githubusercontent.com/Brains-Beyond-Expectations/bbe-charts/main/library.yaml"
 
 // Where the package library is read from, a URL or a file. Set with --library or BBE_LIBRARY to test charts that

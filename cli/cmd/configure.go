@@ -1,8 +1,10 @@
 package cmd
 
 import (
+	"crypto/rand"
 	"errors"
 	"fmt"
+	"math/big"
 	"os"
 	"regexp"
 	"slices"
@@ -142,6 +144,9 @@ func configureCommand(args []string, helperService interfaces.HelperServiceInter
 	}
 
 	logger.Info(fmt.Sprintf("Package `%s` is updated, and applies the change to its %s in the background", installed.Name, setting.Name))
+	for _, generated := range editor.generated {
+		logger.Info(fmt.Sprintf("%s: %s is `%s`, which bbe only shows now. It stays in the `%s` secret as `%s`", generated.entry, generated.label, generated.value, setting.Secret, generated.key))
+	}
 	return nil
 }
 
@@ -204,6 +209,15 @@ type settingEditor struct {
 	secrets     map[string]string
 	removedKeys []string
 	changed     bool
+	// Values bbe generated, shown once the change is saved
+	generated []generatedValue
+}
+
+type generatedValue struct {
+	entry string
+	label string
+	value string
+	key   string
 }
 
 func (editor *settingEditor) run() error {
@@ -243,12 +257,16 @@ func (editor *settingEditor) list() {
 
 	lines := []string{}
 	for _, entry := range editor.entries {
-		lines = append(lines, fmt.Sprintf("  %v (%v)", entry["name"], entry["definition"]))
+		lines = append(lines, "  "+editor.describe(entry))
 	}
 	logger.Info(fmt.Sprintf("The %s:\n%s", editor.setting.Name, strings.Join(lines, "\n")))
 }
 
 func (editor *settingEditor) add() error {
+	if editor.setting.Catalog == nil {
+		return editor.addFields()
+	}
+
 	definitions, err := editor.catalog()
 	if err != nil {
 		return err
@@ -310,7 +328,7 @@ func (editor *settingEditor) add() error {
 func (editor *settingEditor) remove() error {
 	names := []string{}
 	for _, entry := range editor.entries {
-		names = append(names, fmt.Sprint(entry["name"]))
+		names = append(names, editor.entryLabel(entry))
 	}
 
 	chosen, err := editor.uiService.CreateSelect(fmt.Sprintf("Which of the %s would you like to remove?", editor.setting.Name), append(names, cancelChoice))
@@ -330,6 +348,172 @@ func (editor *settingEditor) remove() error {
 	logger.Info(fmt.Sprintf("Removed %s", chosen))
 
 	return nil
+}
+
+func (editor *settingEditor) entryLabel(entry map[string]interface{}) string {
+	return editor.setting.EntryLabel(entry)
+}
+
+// An entry as it's listed, with what it was added with besides its credentials
+func (editor *settingEditor) describe(entry map[string]interface{}) string {
+	if editor.setting.Catalog != nil {
+		return fmt.Sprintf("%v (%v)", entry["name"], entry["definition"])
+	}
+
+	details := []string{}
+	for _, field := range editor.setting.Fields {
+		value, set := entry[field.Name]
+		if field.Unique || field.Secret || !set {
+			continue
+		}
+		if list, isList := value.([]interface{}); isList {
+			parts := []string{}
+			for _, item := range list {
+				parts = append(parts, fmt.Sprint(item))
+			}
+			value = strings.Join(parts, ", ")
+		}
+		details = append(details, fmt.Sprint(value))
+	}
+	if len(details) == 0 {
+		return editor.entryLabel(entry)
+	}
+	return fmt.Sprintf("%s (%s)", editor.entryLabel(entry), strings.Join(details, ", "))
+}
+
+// Asks for each of the setting's fields, and generates the ones it says to
+func (editor *settingEditor) addFields() error {
+	values := map[string]interface{}{}
+	label := ""
+	for _, field := range editor.setting.Fields {
+		value, set, err := editor.askField(field)
+		if err != nil {
+			return err
+		}
+		if !set {
+			continue
+		}
+		values[field.Name] = value
+		if field.Unique {
+			label = fmt.Sprint(value)
+		}
+	}
+
+	entry := map[string]interface{}{}
+	secretFields := map[string]interface{}{}
+	for _, field := range editor.setting.Fields {
+		value, set := values[field.Name]
+		if !set {
+			continue
+		}
+		if !field.Secret {
+			entry[field.Name] = value
+			continue
+		}
+
+		key := secretKey(label, field.Name)
+		editor.secrets[key] = fmt.Sprint(value)
+		editor.removedKeys = slices.DeleteFunc(editor.removedKeys, func(removed string) bool { return removed == key })
+		secretFields[field.Name] = key
+		if field.Generate {
+			editor.generated = append(editor.generated, generatedValue{entry: label, label: fieldLabel(field), value: fmt.Sprint(value), key: key})
+		}
+	}
+	if len(secretFields) > 0 {
+		entry["secretFields"] = secretFields
+	}
+
+	editor.entries = append(editor.entries, entry)
+	editor.changed = true
+	logger.Info(fmt.Sprintf("Added %s", label))
+
+	return nil
+}
+
+// Asks for one field until it's answered as the field requires, returning whether it has a value
+func (editor *settingEditor) askField(field models.SettingField) (interface{}, bool, error) {
+	if field.Generate {
+		value, err := generatePassword()
+		return value, err == nil, err
+	}
+
+	title := fieldLabel(field)
+	if field.Description != "" {
+		title = fmt.Sprintf("%s (%s)", title, field.Description)
+	}
+
+	if len(field.Options) > 0 {
+		names := []string{}
+		for _, option := range field.Options {
+			names = append(names, option.Name)
+		}
+		chosen, err := editor.uiService.CreateSelect(title, names)
+		if err != nil {
+			return nil, false, err
+		}
+		return field.Options[slices.Index(names, chosen)].Value, true, nil
+	}
+
+	pattern := regexp.MustCompile(field.Pattern)
+	for {
+		var input string
+		var err error
+		if field.Secret {
+			input, err = editor.uiService.CreatePassword(title)
+		} else {
+			input, err = editor.uiService.CreateInput(title, "")
+		}
+		if err != nil {
+			return nil, false, err
+		}
+		input = strings.TrimSpace(input)
+
+		switch {
+		case input == "" && field.Optional:
+			return nil, false, nil
+		case input == "":
+			logger.Warning(fmt.Sprintf("%s is required", fieldLabel(field)))
+		case !pattern.MatchString(input):
+			logger.Warning(fmt.Sprintf("`%s` isn't a valid %s, please try again", input, strings.ToLower(fieldLabel(field))))
+		case field.Unique && slices.ContainsFunc(editor.entries, func(entry map[string]interface{}) bool { return fmt.Sprint(entry[field.Name]) == input }):
+			logger.Warning(fmt.Sprintf("There's already one with %s `%s`", strings.ToLower(fieldLabel(field)), input))
+		default:
+			return input, true, nil
+		}
+	}
+}
+
+func fieldLabel(field models.SettingField) string {
+	if field.Label != "" {
+		return field.Label
+	}
+	return field.Name
+}
+
+// Letters and digits, without those easily mistaken for one another: I, O, l, o, 0 and 1
+var passwordCharacters = func() string {
+	characters := []byte{}
+	for _, span := range [][2]byte{{'A', 'Z'}, {'a', 'z'}, {'2', '9'}} {
+		for character := span[0]; character <= span[1]; character++ {
+			if !strings.ContainsRune("IOlo", rune(character)) {
+				characters = append(characters, character)
+			}
+		}
+	}
+	return string(characters)
+}()
+
+// A random password, without characters easily mistaken for one another, as it may be read out to someone
+var generatePassword = func() (string, error) {
+	password := make([]byte, 20)
+	for i := range password {
+		index, err := rand.Int(rand.Reader, big.NewInt(int64(len(passwordCharacters))))
+		if err != nil {
+			return "", fmt.Errorf("Failed to generate a password: %w", err)
+		}
+		password[i] = passwordCharacters[index.Int64()]
+	}
+	return string(password), nil
 }
 
 // Reads the catalog once, through a port forwarded to its service for as long as that takes

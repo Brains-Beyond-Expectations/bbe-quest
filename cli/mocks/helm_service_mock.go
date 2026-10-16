@@ -49,3 +49,8 @@ func (m *MockHelmService) PrepareNamespace(namespace string, context string, pod
 	args := m.Called(namespace, context, podSecurity)
 	return args.Error(0)
 }
+
+func (m *MockHelmService) ApplyCrds(context string, crds []string) error {
+	args := m.Called(context, crds)
+	return args.Error(0)
+}
