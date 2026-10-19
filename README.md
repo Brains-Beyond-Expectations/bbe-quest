@@ -32,6 +32,26 @@ To install the BBE-Quest CLI, run the following command:
 curl -fsSL https://raw.githubusercontent.com/Brains-Beyond-Expectations/bbe-quest/main/install.sh | bash
 ```
 
+### Setting up the cluster and its apps
+
+Run `bbe setup` to install Talos on your nodes and create the cluster, then `bbe install` to add packages: storage,
+networking, single sign-on, media, books and music.
+
+[Getting started](https://github.com/Brains-Beyond-Expectations/bbe-charts/blob/main/docs/getting-started.md) walks
+through the whole setup for new users: the NAS share, the addresses to keep free on your network, installing the
+packages, making your devices find and trust the apps, adding your household, and each package's first steps.
+
+| Command | What it does |
+|---|---|
+| `bbe setup` | Installs Talos on a node, and creates the cluster or adds the node to it |
+| `bbe install` | Installs packages, and what they need first |
+| `bbe upgrade` | Upgrades the installed packages |
+| `bbe configure <package>` | Adds to and removes from a package's settings, such as the people in bbe-auth or the indexers in bbe-media |
+| `bbe uninstall <package>` | Removes a package, after listing what it keeps |
+
+Everything bbe installs, and its settings, is kept in `~/.bbe/bbe.yaml`, which sets up the same packages on a new
+cluster.
+
 ## Local Development
 
 Refer the requirements below and make sure you have Go version 1.23 or higher
