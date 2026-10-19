@@ -591,6 +591,7 @@ func Test_setupCommand_Fails__WhenFailingToModifyConfigDisk(t *testing.T) {
 func Test_setupCommand_Fails__WhenFailingToJoinCluster(t *testing.T) {
 	helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp := initSetupTests()
 
+	talosService.On("ModifyInstallerImage", helperService, mock.Anything, mock.Anything).Return(nil)
 	talosService.On("JoinCluster", helperService, nodeIp, mock.Anything).Return(errors.New("test error"))
 
 	mockSuccessfulSetupFlow(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp, true)
@@ -792,9 +793,23 @@ func mockSuccessfulSetupFlow(helperService *mocks.MockHelperService, dependencyS
 	talosService.On("ModifySchedulingOnControlPlane", helperService, true).Return(nil)
 	talosService.On("ModifyConfigDisk", helperService, nodeTypeConfigFile, "/dev/sda").Return(nil)
 	talosService.On("WarnIfTalosVersionMismatch", mock.Anything).Return()
+	talosService.On("ModifyInstallerImage", helperService, mock.Anything, mock.Anything).Return(nil)
 	talosService.On("JoinCluster", helperService, nodeIp, nodeTypeConfigFile).Return(nil)
 	talosService.On("BootstrapCluster", helperService, chosenIp, chosenIp).Return(nil)
 	talosService.On("VerifyNodeHealth", helperService, chosenIp, chosenIp).Return(nil)
 	talosService.On("DownloadKubeConfig", helperService, chosenIp, chosenIp).Return(nil)
 	configService.On("UpdateBbeClusterName", helperService, "talos-cluster").Return(nil)
+}
+
+func Test_setupCommand_Fails__WhenFailingToModifyInstallerImage(t *testing.T) {
+	helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp := initSetupTests()
+
+	talosService.On("ModifyInstallerImage", helperService, mock.Anything, mock.Anything).Return(errors.New("test error"))
+
+	mockSuccessfulSetupFlow(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp, true)
+
+	err := setupCommand(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService)
+
+	assert.ErrorContains(t, err, "installer image")
+	talosService.AssertNumberOfCalls(t, "JoinCluster", 0)
 }

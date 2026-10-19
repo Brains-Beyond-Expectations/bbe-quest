@@ -466,6 +466,31 @@ func (talosService TalosService) ModifyConfigDisk(helperService interfaces.Helpe
 	return writeDocuments(configDir, configFile, documents)
 }
 
+// ModifyInstallerImage sets the image Talos installs itself to disk from. `talosctl gen config` names a plain one,
+// so a node installed from bbe's image would otherwise lose its system extensions, such as Longhorn's iscsi-tools
+func (talosService TalosService) ModifyInstallerImage(helperService interfaces.HelperServiceInterface, configFile string, image string) error {
+	configDir := helperService.GetConfigDir()
+
+	documents, err := getParsedDocuments(configDir, configFile)
+	if err != nil {
+		return err
+	}
+
+	var installConfig models.TalosUnattendedInstallConfig
+	index, err := getDocument(documents, models.TalosUnattendedInstallConfigKind, &installConfig)
+	if err != nil {
+		return err
+	}
+
+	installConfig.Installer.Image = image
+
+	if err := setDocument(documents, index, installConfig); err != nil {
+		return err
+	}
+
+	return writeDocuments(configDir, configFile, documents)
+}
+
 func (talosService TalosService) ModifySchedulingOnControlPlane(helperService interfaces.HelperServiceInterface, allowScheduling bool) error {
 	configDir := helperService.GetConfigDir()
 	configFile := constants.ControlplaneConfigFile

@@ -95,8 +95,15 @@ type TalosHostnameConfig struct {
 type TalosUnattendedInstallConfig struct {
 	ApiVersion   string                 `yaml:"apiVersion,omitempty"`
 	Kind         string                 `yaml:"kind,omitempty"`
+	Installer    TalosInstaller         `yaml:"installer,omitempty"`
 	Provisioning TalosProvisioning      `yaml:"provisioning,omitempty"`
 	Unmapped     map[string]interface{} `yaml:",inline"`
+}
+
+// TalosInstaller is the image Talos installs itself to disk from, whose system extensions the node then has
+type TalosInstaller struct {
+	Image    string                 `yaml:"image,omitempty"`
+	Unmapped map[string]interface{} `yaml:",inline"`
 }
 
 type TalosProvisioning struct {

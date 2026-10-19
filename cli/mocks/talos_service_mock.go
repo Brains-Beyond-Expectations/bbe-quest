@@ -81,6 +81,11 @@ func (m *MockTalosService) ModifyConfigDisk(helperService interfaces.HelperServi
 	return args.Error(0)
 }
 
+func (m *MockTalosService) ModifyInstallerImage(helperService interfaces.HelperServiceInterface, configFile string, image string) error {
+	args := m.Called(helperService, configFile, image)
+	return args.Error(0)
+}
+
 func (m *MockTalosService) ModifySchedulingOnControlPlane(helperService interfaces.HelperServiceInterface, allowScheduling bool) error {
 	args := m.Called(helperService, allowScheduling)
 	return args.Error(0)

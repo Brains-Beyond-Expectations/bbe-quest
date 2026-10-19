@@ -1482,3 +1482,52 @@ func Test_VerifyNodeHealth_Succeeds_AskingTheControlPlane(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, []string{"--nodes", "192.168.1.161", "--endpoints", "192.168.1.161", "health", "--talosconfig=test"}, args)
 }
+
+func Test_ModifyInstallerImage_Succeeds_KeepingTheRest(t *testing.T) {
+	configYaml := buildMultiDocYaml(t,
+		map[interface{}]interface{}{"foo": "bar"},
+		map[interface{}]interface{}{
+			"kind":      models.TalosUnattendedInstallConfigKind,
+			"installer": map[interface{}]interface{}{"image": "factory.talos.dev/metal-installer/plain:v1.14.2"},
+			"provisioning": map[interface{}]interface{}{
+				"diskSelector": map[interface{}]interface{}{"match": `disk.dev_path == "/dev/sda"`},
+			},
+		},
+	)
+
+	mockOs := mocks.MockOs{}
+	mockOs.On("ReadFile", mock.Anything).Return(configYaml, nil)
+	mockOs.On("WriteFile", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	osReadFile = mockOs.ReadFile
+	osWriteFile = mockOs.WriteFile
+
+	helperService := mocks.MockHelperService{}
+	helperService.On("GetConfigDir").Return("test")
+
+	err := TalosService{}.ModifyInstallerImage(&helperService, constants.WorkerConfigFile, "factory.talos.dev/metal-installer/bbe:v1.14.1")
+
+	documents := decodeWrittenDocuments(t, mockOs.Calls[1].Arguments[1].([]byte))
+	installer := documents[1]["installer"].(map[interface{}]interface{})
+	provisioning := documents[1]["provisioning"].(map[interface{}]interface{})
+
+	assert.Nil(t, err)
+	assert.Equal(t, "factory.talos.dev/metal-installer/bbe:v1.14.1", installer["image"])
+	assert.Equal(t, `disk.dev_path == "/dev/sda"`, provisioning["diskSelector"].(map[interface{}]interface{})["match"])
+	assert.Equal(t, "bar", documents[0]["foo"])
+}
+
+func Test_ModifyInstallerImage_Fails_WithoutTheInstallDocument(t *testing.T) {
+	configYaml := buildMultiDocYaml(t, map[interface{}]interface{}{"foo": "bar"})
+
+	mockOs := mocks.MockOs{}
+	mockOs.On("ReadFile", mock.Anything).Return(configYaml, nil)
+	osReadFile = mockOs.ReadFile
+
+	helperService := mocks.MockHelperService{}
+	helperService.On("GetConfigDir").Return("test")
+
+	err := TalosService{}.ModifyInstallerImage(&helperService, constants.WorkerConfigFile, "image")
+
+	assert.Error(t, err)
+}
+

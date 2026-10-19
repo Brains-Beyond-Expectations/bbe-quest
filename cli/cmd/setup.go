@@ -321,6 +321,12 @@ func setupCommand(helperService interfaces.HelperServiceInterface, dependencySer
 		return fmt.Errorf("Error while modifying config disk: %w", err)
 	}
 
+	logger.Debug("Modifying talos config installer image")
+	err = talosService.ModifyInstallerImage(helperService, nodeConfigFile, nodeType.InstallerImage)
+	if err != nil {
+		return fmt.Errorf("Error while modifying config installer image: %w", err)
+	}
+
 	logger.Debug("Joining cluster")
 	err = talosService.JoinCluster(helperService, originalIp, nodeConfigFile)
 	if err != nil {
