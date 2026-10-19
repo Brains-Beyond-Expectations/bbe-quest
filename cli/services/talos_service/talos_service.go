@@ -163,7 +163,9 @@ func (talosService TalosService) VerifyNodeHealth(helperService interfaces.Helpe
 	start := time.Now()
 	timeout := fiveMinutes
 	for {
-		cmd := execCommand("talosctl", "--nodes", nodeIp, "--endpoints", controlPlaneIp, "health", fmt.Sprintf("--talosconfig=%s", configFilePath))
+		// Only a control plane node answers the health check, which checks every node in the cluster, the new one
+		// included once it has joined
+		cmd := execCommand("talosctl", "--nodes", controlPlaneIp, "--endpoints", controlPlaneIp, "health", fmt.Sprintf("--talosconfig=%s", configFilePath))
 		output, err := cmd.CombinedOutput()
 		logger.Debug(string(output))
 

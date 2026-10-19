@@ -1464,3 +1464,21 @@ func Test_ModifyUserVolumes_Fails_IfVolumeCannotBeEncoded(t *testing.T) {
 	osReadFile = os.ReadFile
 	yamlMarshal = yaml.Marshal
 }
+
+func Test_VerifyNodeHealth_Succeeds_AskingTheControlPlane(t *testing.T) {
+	var args []string
+	execCommand = func(_ string, arguments ...string) *exec.Cmd {
+		args = arguments
+		return exec.Command("echo")
+	}
+	tenSeconds = time.Nanosecond
+	fiveMinutes = time.Minute * 5
+
+	helperService := mocks.MockHelperService{}
+	helperService.On("GetConfigFilePath", constants.TalosConfigFile).Return("test")
+
+	err := TalosService{}.VerifyNodeHealth(&helperService, "192.168.1.117", "192.168.1.161")
+
+	assert.Nil(t, err)
+	assert.Equal(t, []string{"--nodes", "192.168.1.161", "--endpoints", "192.168.1.161", "health", "--talosconfig=test"}, args)
+}
