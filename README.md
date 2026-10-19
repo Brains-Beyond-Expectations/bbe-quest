@@ -72,3 +72,52 @@ To run the tests, run:
 ```bash
 make test
 ```
+
+### Testing charts that aren't released yet
+
+bbe installs packages from the library of released charts in
+[bbe-charts](https://github.com/Brains-Beyond-Expectations/bbe-charts). To install or upgrade with charts from a
+bbe-charts pull request instead, point bbe at that pull request's preview library, from the `cli` folder:
+
+```bash
+go run . install --library https://github.com/Brains-Beyond-Expectations/bbe-charts/releases/download/preview-pr-<number>/library.yaml
+go run . upgrade --library https://github.com/Brains-Beyond-Expectations/bbe-charts/releases/download/preview-pr-<number>/library.yaml
+```
+
+Or set it once for the whole shell, which every command then uses:
+
+```bash
+export BBE_LIBRARY=https://github.com/Brains-Beyond-Expectations/bbe-charts/releases/download/preview-pr-<number>/library.yaml
+go run . install
+```
+
+- **The preview** is updated on every push to the pull request, whose comment shows its library and chart versions.
+  A bbe built from source accepts any library, so use `go run .` rather than an installed `bbe`, which may be too old
+  for the charts.
+- **"chart ... version ... not found" right after a push** means helm's cached index of the preview is older than the
+  library. Refresh it, then run the command again:
+
+  ```bash
+  helm repo update bbe-pr-<number>
+  ```
+
+- **Charts on disk, without pushing:** a library file can point at chart folders in a bbe-charts checkout, with paths
+  relative to the file:
+
+  ```yaml
+  library:
+    - min-bbe-cli: 0.0.0
+      list-revision: 1
+      charts:
+        - name: bbe-music
+          version: 0.0.0-local
+          repositoryUrl: file://charts/bbe-music
+          repositoryName: local
+  ```
+
+  ```bash
+  go run . install --library ../../bbe-charts/local-library.yaml
+  ```
+
+Everything bbe installs is recorded in `~/.bbe/bbe.yaml`, preview versions included, so the next `go run . upgrade`
+with the released library moves the packages back to released charts once they're out.
