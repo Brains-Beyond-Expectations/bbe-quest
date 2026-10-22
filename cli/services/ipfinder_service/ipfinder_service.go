@@ -2,6 +2,8 @@ package ipfinder_service
 
 import (
 	"fmt"
+	"net"
+	"net/netip"
 	"os/exec"
 	"strings"
 
@@ -10,6 +12,7 @@ import (
 )
 
 var execCommand = exec.Command
+var netDial = net.Dial
 
 type IpFinderService struct{}
 
@@ -58,4 +61,21 @@ func (ipFinderService IpFinderService) GetGatewayIp(helperService interfaces.Hel
 
 	result := strings.TrimSpace(string(output))
 	return string(result), nil
+}
+
+// The address this computer reaches the node from, which the node sees as the connection's source unless WSL's network
+// address translation is in between. Nothing is sent: dialing UDP only picks the route
+func (ipFinderService IpFinderService) GetLocalIp(nodeIp string) (string, error) {
+	connection, err := netDial("udp", net.JoinHostPort(nodeIp, "50000"))
+	if err != nil {
+		return "", err
+	}
+	defer connection.Close()
+
+	address, err := netip.ParseAddrPort(connection.LocalAddr().String())
+	if err != nil {
+		return "", err
+	}
+
+	return address.Addr().String(), nil
 }

@@ -1531,3 +1531,211 @@ func Test_ModifyInstallerImage_Fails_WithoutTheInstallDocument(t *testing.T) {
 	assert.Error(t, err)
 }
 
+
+func Test_ModifyNetworkPolicies_Succeeds_KeepingTheRest(t *testing.T) {
+	configYaml := buildMultiDocYaml(t,
+		map[interface{}]interface{}{"version": "v1alpha1"},
+		map[interface{}]interface{}{"apiVersion": "v1alpha1", "kind": models.TalosKubeFlannelCNIConfigKind, "backendType": "vxlan", "backendPort": 4789},
+	)
+
+	mockOs := mocks.MockOs{}
+	mockOs.On("ReadFile", mock.Anything).Return(configYaml, nil)
+	mockOs.On("WriteFile", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	osReadFile = mockOs.ReadFile
+	osWriteFile = mockOs.WriteFile
+
+	helperService := mocks.MockHelperService{}
+	helperService.On("GetConfigDir").Return("test")
+
+	err := TalosService{}.ModifyNetworkPolicies(&helperService)
+
+	documents := decodeWrittenDocuments(t, mockOs.Calls[1].Arguments[1].([]byte))
+	for _, document := range documents {
+		assertNoLeakedModelKeys(t, document)
+	}
+
+	assert.Nil(t, err)
+	assert.Equal(t, "test/controlplane.yaml", mockOs.Calls[1].Arguments[0])
+	assert.Equal(t, map[interface{}]interface{}{"apiVersion": "v1alpha1", "kind": "KubeFlannelCNIConfig", "backendType": "vxlan", "backendPort": 4789, "kubeNetworkPoliciesEnabled": true}, documents[1])
+
+	osReadFile = os.ReadFile
+	osWriteFile = os.WriteFile
+}
+
+func Test_ModifyNetworkPolicies_Fails_WithoutFlannel(t *testing.T) {
+	configYaml := buildMultiDocYaml(t, map[interface{}]interface{}{"version": "v1alpha1"})
+
+	mockOs := mocks.MockOs{}
+	mockOs.On("ReadFile", mock.Anything).Return(configYaml, nil)
+	osReadFile = mockOs.ReadFile
+
+	helperService := mocks.MockHelperService{}
+	helperService.On("GetConfigDir").Return("test")
+
+	err := TalosService{}.ModifyNetworkPolicies(&helperService)
+
+	assert.EqualError(t, err, "KubeFlannelCNIConfig document not found in config")
+	mockOs.AssertNotCalled(t, "WriteFile", mock.Anything, mock.Anything, mock.Anything)
+
+	osReadFile = os.ReadFile
+}
+
+func Test_ModifyControlPlaneMetrics_Succeeds_KeepingTheRest(t *testing.T) {
+	configYaml := buildMultiDocYaml(t,
+		map[interface{}]interface{}{
+			"version": "v1alpha1",
+			"cluster": map[interface{}]interface{}{
+				"etcd": map[interface{}]interface{}{
+					"ca":        map[interface{}]interface{}{"crt": "etcd-crt"},
+					"extraArgs": map[interface{}]interface{}{"election-timeout": "5000"},
+				},
+				"token": "secret-token",
+			},
+		},
+		map[interface{}]interface{}{"apiVersion": "v1alpha1", "kind": models.TalosKubeControllerManagerConfigKind, "image": "kube-controller-manager"},
+		map[interface{}]interface{}{"apiVersion": "v1alpha1", "kind": models.TalosKubeSchedulerConfigKind, "image": "kube-scheduler", "config": map[interface{}]interface{}{}},
+		map[interface{}]interface{}{"apiVersion": "v1alpha1", "kind": models.TalosKubeProxyConfigKind, "image": "kube-proxy", "config": map[interface{}]interface{}{"bindAddressHardFail": true}},
+	)
+
+	mockOs := mocks.MockOs{}
+	mockOs.On("ReadFile", mock.Anything).Return(configYaml, nil)
+	mockOs.On("WriteFile", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	osReadFile = mockOs.ReadFile
+	osWriteFile = mockOs.WriteFile
+
+	helperService := mocks.MockHelperService{}
+	helperService.On("GetConfigDir").Return("test")
+
+	err := TalosService{}.ModifyControlPlaneMetrics(&helperService)
+
+	documents := decodeWrittenDocuments(t, mockOs.Calls[1].Arguments[1].([]byte))
+	for _, document := range documents {
+		assertNoLeakedModelKeys(t, document)
+	}
+
+	assert.Nil(t, err)
+	assert.Equal(t, "test/controlplane.yaml", mockOs.Calls[1].Arguments[0])
+	cluster := documents[0]["cluster"].(map[interface{}]interface{})
+	assert.Equal(t, "secret-token", cluster["token"])
+	assert.Equal(t, map[interface{}]interface{}{
+		"ca":        map[interface{}]interface{}{"crt": "etcd-crt"},
+		"extraArgs": map[interface{}]interface{}{"election-timeout": "5000", "listen-metrics-urls": "http://0.0.0.0:2381"},
+	}, cluster["etcd"])
+	assert.Equal(t, map[interface{}]interface{}{"apiVersion": "v1alpha1", "kind": "KubeControllerManagerConfig", "image": "kube-controller-manager", "extraArgs": map[interface{}]interface{}{"bind-address": "0.0.0.0"}}, documents[1])
+	assert.Equal(t, map[interface{}]interface{}{"apiVersion": "v1alpha1", "kind": "KubeSchedulerConfig", "image": "kube-scheduler", "config": map[interface{}]interface{}{}, "extraArgs": map[interface{}]interface{}{"bind-address": "0.0.0.0"}}, documents[2])
+	assert.Equal(t, map[interface{}]interface{}{"apiVersion": "v1alpha1", "kind": "KubeProxyConfig", "image": "kube-proxy", "config": map[interface{}]interface{}{"bindAddressHardFail": true, "metricsBindAddress": "0.0.0.0:10249"}}, documents[3])
+
+	osReadFile = os.ReadFile
+	osWriteFile = os.WriteFile
+}
+
+func Test_ModifyControlPlaneMetrics_Fails_WithoutKubeProxy(t *testing.T) {
+	configYaml := buildMultiDocYaml(t,
+		map[interface{}]interface{}{"version": "v1alpha1"},
+		map[interface{}]interface{}{"kind": models.TalosKubeControllerManagerConfigKind},
+		map[interface{}]interface{}{"kind": models.TalosKubeSchedulerConfigKind},
+	)
+
+	mockOs := mocks.MockOs{}
+	mockOs.On("ReadFile", mock.Anything).Return(configYaml, nil)
+	osReadFile = mockOs.ReadFile
+
+	helperService := mocks.MockHelperService{}
+	helperService.On("GetConfigDir").Return("test")
+
+	err := TalosService{}.ModifyControlPlaneMetrics(&helperService)
+
+	assert.EqualError(t, err, "KubeProxyConfig document not found in config")
+	mockOs.AssertNotCalled(t, "WriteFile", mock.Anything, mock.Anything, mock.Anything)
+
+	osReadFile = os.ReadFile
+}
+
+func Test_ModifyControlPlaneMetrics_Fails_WithoutThePrimaryDocument(t *testing.T) {
+	configYaml := buildMultiDocYaml(t, map[interface{}]interface{}{"kind": models.TalosKubeProxyConfigKind})
+
+	mockOs := mocks.MockOs{}
+	mockOs.On("ReadFile", mock.Anything).Return(configYaml, nil)
+	osReadFile = mockOs.ReadFile
+
+	helperService := mocks.MockHelperService{}
+	helperService.On("GetConfigDir").Return("test")
+
+	err := TalosService{}.ModifyControlPlaneMetrics(&helperService)
+
+	assert.EqualError(t, err, "primary machine config document not found in config")
+
+	osReadFile = os.ReadFile
+}
+
+func Test_ModifyFirewall_Succeeds_ReplacingItsOwnRules(t *testing.T) {
+	configYaml := buildMultiDocYaml(t,
+		map[interface{}]interface{}{"version": "v1alpha1"},
+		map[interface{}]interface{}{"apiVersion": "v1alpha1", "kind": models.TalosKubeNetworkConfigKind, "podSubnets": []interface{}{"10.244.0.0/16"}, "serviceSubnets": []interface{}{"10.96.0.0/12"}},
+		map[interface{}]interface{}{"apiVersion": "v1alpha1", "kind": models.TalosNetworkRuleConfigKind, "name": "bbe-apid", "ingress": []interface{}{map[interface{}]interface{}{"subnet": "10.1.1.0/24"}}},
+		map[interface{}]interface{}{"apiVersion": "v1alpha1", "kind": models.TalosNetworkRuleConfigKind, "name": "my-own-rule"},
+	)
+
+	mockOs := mocks.MockOs{}
+	mockOs.On("ReadFile", mock.Anything).Return(configYaml, nil)
+	mockOs.On("WriteFile", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	osReadFile = mockOs.ReadFile
+	osWriteFile = mockOs.WriteFile
+
+	helperService := mocks.MockHelperService{}
+	helperService.On("GetConfigDir").Return("test")
+
+	err := TalosService{}.ModifyFirewall(&helperService, constants.WorkerConfigFile, []string{"192.168.1.0/24", "10.0.0.5/32"})
+
+	documents := decodeWrittenDocuments(t, mockOs.Calls[1].Arguments[1].([]byte))
+
+	assert.Nil(t, err)
+	assert.Equal(t, "test/worker.yaml", mockOs.Calls[1].Arguments[0])
+	assert.Len(t, documents, 3+len(firewallRules))
+	assert.Equal(t, "my-own-rule", documents[2]["name"])
+
+	rules := map[interface{}]map[interface{}]interface{}{}
+	for _, document := range documents[3:] {
+		assert.Equal(t, "NetworkRuleConfig", document["kind"])
+		rules[document["name"]] = document
+	}
+
+	trusted := []interface{}{
+		map[interface{}]interface{}{"subnet": "192.168.1.0/24"},
+		map[interface{}]interface{}{"subnet": "10.0.0.5/32"},
+	}
+	assert.Equal(t, map[interface{}]interface{}{
+		"apiVersion":   "v1alpha1",
+		"kind":         "NetworkRuleConfig",
+		"name":         "bbe-apid",
+		"portSelector": map[interface{}]interface{}{"ports": []interface{}{50000}, "protocol": "tcp"},
+		"ingress":      trusted,
+	}, rules["bbe-apid"])
+	assert.Equal(t, map[interface{}]interface{}{"ports": []interface{}{"2379-2380"}, "protocol": "tcp"}, rules["bbe-etcd"]["portSelector"])
+	assert.Equal(t, map[interface{}]interface{}{"ports": []interface{}{4789}, "protocol": "udp"}, rules["bbe-flannel"]["portSelector"])
+	assert.Equal(t, trusted, rules["bbe-flannel"]["ingress"])
+	for _, name := range []string{"bbe-kubernetes-api", "bbe-kubelet", "bbe-control-plane-metrics"} {
+		assert.Equal(t, append(trusted, map[interface{}]interface{}{"subnet": "10.244.0.0/16"}), rules[name]["ingress"], name)
+	}
+
+	osReadFile = os.ReadFile
+	osWriteFile = os.WriteFile
+}
+
+func Test_ModifyFirewall_Fails_WithoutTheKubernetesNetwork(t *testing.T) {
+	configYaml := buildMultiDocYaml(t, map[interface{}]interface{}{"version": "v1alpha1"})
+
+	mockOs := mocks.MockOs{}
+	mockOs.On("ReadFile", mock.Anything).Return(configYaml, nil)
+	osReadFile = mockOs.ReadFile
+
+	helperService := mocks.MockHelperService{}
+	helperService.On("GetConfigDir").Return("test")
+
+	err := TalosService{}.ModifyFirewall(&helperService, constants.WorkerConfigFile, []string{"192.168.1.0/24"})
+
+	assert.EqualError(t, err, "KubeNetworkConfig document not found in config")
+	mockOs.AssertNotCalled(t, "WriteFile", mock.Anything, mock.Anything, mock.Anything)
+
+	osReadFile = os.ReadFile
+}
