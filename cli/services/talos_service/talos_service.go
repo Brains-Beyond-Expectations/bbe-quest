@@ -600,8 +600,8 @@ var firewallRules = []firewallRule{
 	{name: "bbe-kubernetes-api", ports: []interface{}{6443}, protocol: "tcp", fromPods: true},
 	// The API server, for logs and exec, and metrics-server and Prometheus from their pods
 	{name: "bbe-kubelet", ports: []interface{}{10250}, protocol: "tcp", fromPods: true},
-	// etcd, kube-proxy, the controller manager and the scheduler's metrics, for Prometheus
-	{name: "bbe-control-plane-metrics", ports: []interface{}{2381, 10249, 10257, 10259}, protocol: "tcp", fromPods: true},
+	// The metrics of etcd, kube-proxy, the controller manager, the scheduler and node-exporter, for Prometheus
+	{name: "bbe-metrics", ports: []interface{}{2381, 9100, 10249, 10257, 10259}, protocol: "tcp", fromPods: true},
 	// Flannel's VXLAN between the nodes. Open, anyone on the network could send packets into the pod network
 	{name: "bbe-flannel", ports: []interface{}{4789}, protocol: "udp"},
 }

@@ -1714,7 +1714,7 @@ func Test_ModifyFirewall_Succeeds_ReplacingItsOwnRules(t *testing.T) {
 	assert.Equal(t, map[interface{}]interface{}{"ports": []interface{}{"2379-2380"}, "protocol": "tcp"}, rules["bbe-etcd"]["portSelector"])
 	assert.Equal(t, map[interface{}]interface{}{"ports": []interface{}{4789}, "protocol": "udp"}, rules["bbe-flannel"]["portSelector"])
 	assert.Equal(t, trusted, rules["bbe-flannel"]["ingress"])
-	for _, name := range []string{"bbe-kubernetes-api", "bbe-kubelet", "bbe-control-plane-metrics"} {
+	for _, name := range []string{"bbe-kubernetes-api", "bbe-kubelet", "bbe-metrics"} {
 		assert.Equal(t, append(trusted, map[interface{}]interface{}{"subnet": "10.244.0.0/16"}), rules[name]["ingress"], name)
 	}
 

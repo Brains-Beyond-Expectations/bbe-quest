@@ -58,7 +58,7 @@ When it creates a cluster, `bbe setup` asks which networks may reach the Talos a
 first node's `/24`. They have to include every node and the computers you manage the cluster from.
 
 - **A firewall on every node** keeps the Talos API (50000, 50001), the Kubernetes API (6443), etcd, the kubelet
-  (10250), Flannel's VXLAN (4789) and the control plane's metrics to those networks, and to pods where they need them.
+  (10250), Flannel's VXLAN (4789) and the metrics of the control plane and node-exporter to those networks, and to pods where they need them.
   Every other port, the apps' included, stays open.
 - **NetworkPolicies are enforced**: Talos runs kube-network-policies alongside Flannel, so the policies packages bring
   limit which pods reach their apps.
