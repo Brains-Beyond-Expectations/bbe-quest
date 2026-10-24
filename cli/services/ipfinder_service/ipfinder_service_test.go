@@ -1,6 +1,8 @@
 package ipfinder_service
 
 import (
+	"errors"
+	"net"
 	"os"
 	"os/exec"
 	"testing"
@@ -101,4 +103,23 @@ func Test_GetGatewayIp_Non_WSL(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.Equal(t, mockedIpResult, ip)
+}
+
+func Test_GetLocalIp_Succeeds(t *testing.T) {
+	ip, err := IpFinderService{}.GetLocalIp("127.0.0.1")
+
+	assert.NoError(t, err)
+	assert.Equal(t, "127.0.0.1", ip)
+}
+
+func Test_GetLocalIp_Fails_WhenNoRouteIsFound(t *testing.T) {
+	netDial = func(_ string, _ string) (net.Conn, error) {
+		return nil, errors.New("network is unreachable")
+	}
+	defer func() { netDial = net.Dial }()
+
+	ip, err := IpFinderService{}.GetLocalIp("192.168.1.161")
+
+	assert.EqualError(t, err, "network is unreachable")
+	assert.Equal(t, "", ip)
 }

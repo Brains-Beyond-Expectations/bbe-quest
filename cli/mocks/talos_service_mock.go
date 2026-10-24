@@ -119,3 +119,18 @@ func (m *MockTalosService) ModifyUserVolumes(helperService interfaces.HelperServ
 	args := m.Called(helperService, configFile, names)
 	return args.Error(0)
 }
+
+func (m *MockTalosService) ModifyNetworkPolicies(helperService interfaces.HelperServiceInterface) error {
+	args := m.Called(helperService)
+	return args.Error(0)
+}
+
+func (m *MockTalosService) ModifyControlPlaneMetrics(helperService interfaces.HelperServiceInterface) error {
+	args := m.Called(helperService)
+	return args.Error(0)
+}
+
+func (m *MockTalosService) ModifyFirewall(helperService interfaces.HelperServiceInterface, configFile string, trustedNetworks []string) error {
+	args := m.Called(helperService, configFile, trustedNetworks)
+	return args.Error(0)
+}

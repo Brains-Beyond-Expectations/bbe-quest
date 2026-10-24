@@ -491,6 +491,169 @@ func (talosService TalosService) ModifyInstallerImage(helperService interfaces.H
 	return writeDocuments(configDir, configFile, documents)
 }
 
+// Has Talos run kube-network-policies alongside Flannel, so the NetworkPolicies packages bring are enforced. Talos sets
+// up the cluster's network from the control plane's config, so it's only set there
+func (talosService TalosService) ModifyNetworkPolicies(helperService interfaces.HelperServiceInterface) error {
+	configDir := helperService.GetConfigDir()
+	configFile := constants.ControlplaneConfigFile
+
+	documents, err := getParsedDocuments(configDir, configFile)
+	if err != nil {
+		return err
+	}
+
+	var flannelConfig models.TalosKubeFlannelCNIConfig
+	index, err := getDocument(documents, models.TalosKubeFlannelCNIConfigKind, &flannelConfig)
+	if err != nil {
+		return err
+	}
+
+	flannelConfig.KubeNetworkPoliciesEnabled = true
+
+	if err := setDocument(documents, index, flannelConfig); err != nil {
+		return err
+	}
+
+	return writeDocuments(configDir, configFile, documents)
+}
+
+// Serves the metrics of etcd, the controller manager, the scheduler and kube-proxy on the node's addresses rather than
+// only on localhost, so a monitoring package can collect them. The controller manager and the scheduler still ask for
+// a token, and the firewall keeps all four to the trusted networks and pods
+func (talosService TalosService) ModifyControlPlaneMetrics(helperService interfaces.HelperServiceInterface) error {
+	configDir := helperService.GetConfigDir()
+	configFile := constants.ControlplaneConfigFile
+
+	documents, err := getParsedDocuments(configDir, configFile)
+	if err != nil {
+		return err
+	}
+
+	var machineConfig models.TalosMachineConfig
+	index, err := getPrimaryDocument(documents, &machineConfig)
+	if err != nil {
+		return err
+	}
+
+	if machineConfig.Cluster.Etcd.ExtraArgs == nil {
+		machineConfig.Cluster.Etcd.ExtraArgs = map[string]interface{}{}
+	}
+	machineConfig.Cluster.Etcd.ExtraArgs["listen-metrics-urls"] = "http://0.0.0.0:2381"
+
+	if err := setDocument(documents, index, machineConfig); err != nil {
+		return err
+	}
+
+	for _, kind := range []string{models.TalosKubeControllerManagerConfigKind, models.TalosKubeSchedulerConfigKind} {
+		var componentConfig models.TalosKubeComponentConfig
+		index, err := getDocument(documents, kind, &componentConfig)
+		if err != nil {
+			return err
+		}
+
+		if componentConfig.ExtraArgs == nil {
+			componentConfig.ExtraArgs = map[string]interface{}{}
+		}
+		componentConfig.ExtraArgs["bind-address"] = "0.0.0.0"
+
+		if err := setDocument(documents, index, componentConfig); err != nil {
+			return err
+		}
+	}
+
+	var proxyConfig models.TalosKubeProxyConfig
+	index, err = getDocument(documents, models.TalosKubeProxyConfigKind, &proxyConfig)
+	if err != nil {
+		return err
+	}
+
+	if proxyConfig.Config == nil {
+		proxyConfig.Config = map[string]interface{}{}
+	}
+	proxyConfig.Config["metricsBindAddress"] = "0.0.0.0:10249"
+
+	if err := setDocument(documents, index, proxyConfig); err != nil {
+		return err
+	}
+
+	return writeDocuments(configDir, configFile, documents)
+}
+
+type firewallRule struct {
+	name     string
+	ports    []interface{}
+	protocol string
+	// Whether pods may connect too, besides the trusted networks
+	fromPods bool
+}
+
+// The ports of Talos and Kubernetes themselves, which the firewall keeps to the trusted networks: the nodes and the
+// computers managing them. Every other port, the apps' included, stays open. Workers get the same rules, covering
+// ports only control planes listen on
+var firewallRules = []firewallRule{
+	// talosctl, and the nodes reaching each other's Talos API
+	{name: "bbe-apid", ports: []interface{}{50000}, protocol: "tcp"},
+	// Nodes getting their certificates from the control plane
+	{name: "bbe-trustd", ports: []interface{}{50001}, protocol: "tcp"},
+	{name: "bbe-etcd", ports: []interface{}{"2379-2380"}, protocol: "tcp"},
+	// Pods reach the Kubernetes API through its service, which leads to the node's address
+	{name: "bbe-kubernetes-api", ports: []interface{}{6443}, protocol: "tcp", fromPods: true},
+	// The API server, for logs and exec, and metrics-server and Prometheus from their pods
+	{name: "bbe-kubelet", ports: []interface{}{10250}, protocol: "tcp", fromPods: true},
+	// The metrics of etcd, kube-proxy, the controller manager, the scheduler and node-exporter, for Prometheus
+	{name: "bbe-metrics", ports: []interface{}{2381, 9100, 10249, 10257, 10259}, protocol: "tcp", fromPods: true},
+	// Flannel's VXLAN between the nodes. Open, anyone on the network could send packets into the pod network
+	{name: "bbe-flannel", ports: []interface{}{4789}, protocol: "udp"},
+}
+
+// Keeps the ports of Talos and Kubernetes to the trusted networks, given as CIDRs, replacing the rules an earlier run
+// added
+func (talosService TalosService) ModifyFirewall(helperService interfaces.HelperServiceInterface, configFile string, trustedNetworks []string) error {
+	configDir := helperService.GetConfigDir()
+
+	documents, err := getParsedDocuments(configDir, configFile)
+	if err != nil {
+		return err
+	}
+
+	var networkConfig models.TalosKubeNetworkConfig
+	if _, err := getDocument(documents, models.TalosKubeNetworkConfigKind, &networkConfig); err != nil {
+		return err
+	}
+
+	documents = slices.DeleteFunc(documents, func(document map[string]interface{}) bool {
+		return document["kind"] == models.TalosNetworkRuleConfigKind && slices.ContainsFunc(firewallRules, func(rule firewallRule) bool {
+			return document["name"] == rule.name
+		})
+	})
+
+	for _, rule := range firewallRules {
+		subnets := trustedNetworks
+		if rule.fromPods {
+			subnets = slices.Concat(trustedNetworks, networkConfig.PodSubnets)
+		}
+
+		ingress := make([]models.TalosNetworkRuleIngress, len(subnets))
+		for i, subnet := range subnets {
+			ingress[i] = models.TalosNetworkRuleIngress{Subnet: subnet}
+		}
+
+		documents = append(documents, map[string]interface{}{})
+		networkRule := models.TalosNetworkRuleConfig{
+			ApiVersion:   models.TalosConfigApiVersion,
+			Kind:         models.TalosNetworkRuleConfigKind,
+			Name:         rule.name,
+			PortSelector: models.TalosNetworkPortSelector{Ports: rule.ports, Protocol: rule.protocol},
+			Ingress:      ingress,
+		}
+		if err := setDocument(documents, len(documents)-1, networkRule); err != nil {
+			return err
+		}
+	}
+
+	return writeDocuments(configDir, configFile, documents)
+}
+
 func (talosService TalosService) ModifySchedulingOnControlPlane(helperService interfaces.HelperServiceInterface, allowScheduling bool) error {
 	configDir := helperService.GetConfigDir()
 	configFile := constants.ControlplaneConfigFile

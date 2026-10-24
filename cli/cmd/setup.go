@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"net/netip"
 	"os"
 	"slices"
 	"strings"
@@ -224,6 +225,7 @@ func setupCommand(helperService interfaces.HelperServiceInterface, dependencySer
 
 	var clusterName string
 	var allowSchedulingOnControlPlanes string
+	var trustedNetworks []string
 	if createControlPlane {
 		if !configExists {
 			suggestedClusterName := "big_brain_entropy_holder"
@@ -239,6 +241,11 @@ func setupCommand(helperService interfaces.HelperServiceInterface, dependencySer
 			err = talosService.GenerateConfig(helperService, chosenIp, clusterName, nodeType.TalosVersion)
 			if err != nil {
 				return fmt.Errorf("Error while generating config: %w", err)
+			}
+
+			trustedNetworks, err = askTrustedNetworks(helperService, ipFinderService, uiService, chosenIp)
+			if err != nil {
+				return fmt.Errorf("Error while asking for the trusted networks: %w", err)
 			}
 		}
 
@@ -258,6 +265,27 @@ func setupCommand(helperService interfaces.HelperServiceInterface, dependencySer
 
 	logger.Debug("Checking if talosctl matches the version the node image was built for")
 	talosService.WarnIfTalosVersionMismatch(nodeType.TalosVersion)
+
+	// A new cluster's settings for every node go into both configs, which each later node is set up from
+	if trustedNetworks != nil {
+		logger.Debug("Enforcing network policies, serving the control plane's metrics and setting up the firewall")
+		err = talosService.ModifyNetworkPolicies(helperService)
+		if err != nil {
+			return fmt.Errorf("Error while enforcing network policies in file: %w", err)
+		}
+
+		err = talosService.ModifyControlPlaneMetrics(helperService)
+		if err != nil {
+			return fmt.Errorf("Error while storing the control plane's metrics addresses in file: %w", err)
+		}
+
+		for _, configFile := range []string{constants.ControlplaneConfigFile, constants.WorkerConfigFile} {
+			err = talosService.ModifyFirewall(helperService, configFile, trustedNetworks)
+			if err != nil {
+				return fmt.Errorf("Error while storing the firewall in file: %w", err)
+			}
+		}
+	}
 
 	nodeConfigFile := constants.WorkerConfigFile
 	if createControlPlane {
@@ -367,6 +395,80 @@ func setupCommand(helperService interfaces.HelperServiceInterface, dependencySer
 	spinner.Stop()
 
 	return nil
+}
+
+// Asks which networks may reach the Talos and Kubernetes APIs, suggesting the node's /24. They have to include the
+// node, and the computer running bbe, or bbe would lock itself out of the node it's setting up
+func askTrustedNetworks(helperService interfaces.HelperServiceInterface, ipFinderService interfaces.IpFinderServiceInterface, uiService interfaces.UiServiceInterface, nodeIp string) ([]string, error) {
+	nodeAddress, err := netip.ParseAddr(nodeIp)
+	if err != nil {
+		return nil, err
+	}
+	suggestion := netip.PrefixFrom(nodeAddress, 24).Masked().String()
+
+	localIp, err := ipFinderService.GetLocalIp(nodeIp)
+	if err != nil {
+		logger.Debug(fmt.Sprintf("Couldn't find this computer's address towards %s: %s", nodeIp, err))
+	}
+
+	title := fmt.Sprintf("Which networks may reach the Talos and Kubernetes APIs? Include every node and the computers you manage the cluster from, separated by commas %s", italic("(press enter to accept the node's network)"))
+	for {
+		answer, err := uiService.CreateInput(title, suggestion)
+		if err != nil {
+			panic(err)
+		}
+
+		networks, problem := parseTrustedNetworks(answer, nodeAddress, localIp, helperService.IsWsl())
+		if problem == "" {
+			return networks, nil
+		}
+
+		title = fmt.Sprintf("%s. Please enter the networks again:", problem)
+	}
+}
+
+// Reads networks such as "192.168.1.0/24, 10.0.0.5/32", or says what's wrong with them
+func parseTrustedNetworks(answer string, nodeAddress netip.Addr, localIp string, isWsl bool) ([]string, string) {
+	prefixes := []netip.Prefix{}
+	for _, field := range strings.Split(answer, ",") {
+		field = strings.TrimSpace(field)
+		if field == "" {
+			continue
+		}
+
+		prefix, err := netip.ParsePrefix(field)
+		if err != nil {
+			return nil, fmt.Sprintf("%s isn't a network such as 192.168.1.0/24", field)
+		}
+		prefixes = append(prefixes, prefix.Masked())
+	}
+
+	contains := func(address netip.Addr) bool {
+		return slices.ContainsFunc(prefixes, func(prefix netip.Prefix) bool { return prefix.Contains(address) })
+	}
+
+	if len(prefixes) == 0 {
+		return nil, "No network was entered"
+	}
+
+	if !contains(nodeAddress) {
+		return nil, fmt.Sprintf("None of them includes the node's address, %s", nodeAddress)
+	}
+
+	if localAddress, err := netip.ParseAddr(localIp); err == nil && !contains(localAddress) {
+		// WSL reaches the network through Windows, whose address the node sees instead
+		if !isWsl {
+			return nil, fmt.Sprintf("None of them includes this computer's address, %s, which would lock bbe out of the node", localAddress)
+		}
+		logger.Warning(fmt.Sprintf("This computer's address in WSL, %s, isn't in them. Make sure they include the Windows computer's address on your network, or bbe will be locked out of the node", localAddress))
+	}
+
+	networks := make([]string, len(prefixes))
+	for i, prefix := range prefixes {
+		networks[i] = prefix.String()
+	}
+
+	return networks, ""
 }
 
 // diskLabel describes a disk for the install prompt. The transport is included because the
