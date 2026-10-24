@@ -24,19 +24,21 @@ type ImageService struct{}
 const talosImageVersion = "v1.14.1"
 
 var IntelNuc = models.NodeType{
-	OutputFile:   "metal-amd64.iso",
-	ImagerType:   "iso",
-	ImageLink:    fmt.Sprintf("https://factory.talos.dev/image/434a0300db532066f1098e05ac068159371d00f0aba0a3103a0e826e83825c82/%s/metal-amd64.iso", talosImageVersion),
-	Extensions:   []string{"intel-ucode", "gvisor", "iscsi-tools", "util-linux-tools"},
-	TalosVersion: talosImageVersion,
+	OutputFile:     "metal-amd64.iso",
+	ImagerType:     "iso",
+	ImageLink:      fmt.Sprintf("https://factory.talos.dev/image/bbdb2fb8f886104868f647ffbe8eab12b403bc00db5d39d0ccd73751b4fa472c/%s/metal-amd64.iso", talosImageVersion),
+	Extensions:     []string{"intel-ucode", "i915", "gvisor", "iscsi-tools", "util-linux-tools"},
+	TalosVersion:   talosImageVersion,
+	InstallerImage: fmt.Sprintf("factory.talos.dev/metal-installer/bbdb2fb8f886104868f647ffbe8eab12b403bc00db5d39d0ccd73751b4fa472c:%s", talosImageVersion),
 }
 
 var RaspberryPi = models.NodeType{
-	OutputFile:   "metal-arm64.raw.xz",
-	ImagerType:   "rpi_generic",
-	ImageLink:    fmt.Sprintf("https://factory.talos.dev/image/f8a903f101ce10f686476024898734bb6b36353cc4d41f348514db9004ec0a9d/%s/metal-arm64.raw.xz", talosImageVersion),
-	Extensions:   []string{"iscsi-tools", "util-linux-tools"},
-	TalosVersion: talosImageVersion,
+	OutputFile:     "metal-arm64.raw.xz",
+	ImagerType:     "rpi_generic",
+	ImageLink:      fmt.Sprintf("https://factory.talos.dev/image/f8a903f101ce10f686476024898734bb6b36353cc4d41f348514db9004ec0a9d/%s/metal-arm64.raw.xz", talosImageVersion),
+	Extensions:     []string{"iscsi-tools", "util-linux-tools"},
+	TalosVersion:   talosImageVersion,
+	InstallerImage: fmt.Sprintf("factory.talos.dev/metal-installer/f8a903f101ce10f686476024898734bb6b36353cc4d41f348514db9004ec0a9d:%s", talosImageVersion),
 }
 
 func (imageService ImageService) CreateImage(nodeType models.NodeType, outputDir string) (string, error) {

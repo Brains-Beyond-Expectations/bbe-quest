@@ -51,7 +51,7 @@ func readChartArchive(archivePath string) (*models.HelmChart, error) {
 		}
 
 		name := path.Clean(header.Name)
-		if header.Typeflag != tar.TypeReg || !slices.Contains(chartFiles, path.Base(name)) {
+		if header.Typeflag != tar.TypeReg || !(slices.Contains(chartFiles, path.Base(name)) || inCrdsFolder(name)) {
 			continue
 		}
 
@@ -110,6 +110,12 @@ func parseChart(files map[string][]byte, dir string) (*models.HelmChart, error) 
 		}
 	}
 
+	recorded, err := parseRecordedValues(metadata.Annotations[constants.RecordedValuesAnnotation], chart.Values)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to parse the %s annotation in %s/Chart.yaml: %w", constants.RecordedValuesAnnotation, dir, err)
+	}
+	chart.RecordedValues = recorded
+
 	// Helm still validates the values if bbe can't read the schema, so carry on without it
 	if content, found := files[dir+"/values.schema.json"]; found {
 		var schema models.HelmChartSchema
@@ -117,6 +123,12 @@ func parseChart(files map[string][]byte, dir string) (*models.HelmChart, error) 
 			logger.Debug(fmt.Sprintf("Ignoring %s/values.schema.json, it could not be parsed: %v", dir, err))
 		} else {
 			chart.Schema = &schema
+		}
+	}
+
+	for _, name := range slices.Sorted(maps.Keys(files)) {
+		if file, found := strings.CutPrefix(name, dir+"/crds/"); found && isManifest(file) {
+			chart.Crds = append(chart.Crds, string(files[name]))
 		}
 	}
 
@@ -143,6 +155,15 @@ func parseChart(files map[string][]byte, dir string) (*models.HelmChart, error) 
 	}
 
 	return chart, nil
+}
+
+// Helm reads every manifest under a chart's crds/ folder as a CRD
+func inCrdsFolder(name string) bool {
+	return slices.Contains(strings.Split(path.Dir(name), "/"), "crds") && isManifest(name)
+}
+
+func isManifest(name string) bool {
+	return slices.Contains([]string{".yaml", ".yml", ".json"}, path.Ext(name))
 }
 
 func subchartDirs(files map[string][]byte, dir string) []string {
@@ -181,7 +202,7 @@ func parsePrerequisites(annotation string) ([]models.ChartPrerequisite, error) {
 		if prerequisite.Name == "" {
 			return nil, errors.New("every prerequisite needs a name")
 		}
-		if prerequisite.StorageClass == "" && prerequisite.Talos == nil {
+		if prerequisite.StorageClass == "" && prerequisite.Talos == nil && prerequisite.Package == "" {
 			return nil, fmt.Errorf("prerequisite `%s` has nothing to check", prerequisite.Name)
 		}
 		if prerequisite.Talos != nil {
@@ -197,6 +218,44 @@ func parsePrerequisites(annotation string) ([]models.ChartPrerequisite, error) {
 	}
 
 	return prerequisites, nil
+}
+
+// The value paths a chart has bbe record, each of which its values.yaml has to set, as that's what bbe records
+func parseRecordedValues(annotation string, values map[string]interface{}) ([]string, error) {
+	if strings.TrimSpace(annotation) == "" {
+		return nil, nil
+	}
+
+	var paths []string
+	if err := yaml.Unmarshal([]byte(annotation), &paths); err != nil {
+		return nil, err
+	}
+
+	for _, valuePath := range paths {
+		if slices.Contains(strings.Split(valuePath, "."), "") {
+			return nil, fmt.Errorf("`%s` isn't a value path", valuePath)
+		}
+		if !hasValue(values, strings.Split(valuePath, ".")) {
+			return nil, fmt.Errorf("`%s` isn't set in values.yaml", valuePath)
+		}
+	}
+
+	return paths, nil
+}
+
+func hasValue(values map[string]interface{}, valuePath []string) bool {
+	var current interface{} = values
+	for _, key := range valuePath {
+		nested, isMap := current.(map[string]interface{})
+		if !isMap {
+			return false
+		}
+		if current, isMap = nested[key]; !isMap {
+			return false
+		}
+	}
+
+	return current != nil
 }
 
 // The catalogs bbe knows how to read
@@ -216,8 +275,26 @@ func parseSettings(annotation string) ([]models.ChartSetting, error) {
 		if setting.Name == "" || setting.Values == "" {
 			return nil, errors.New("every setting needs a name and the path of its values")
 		}
-		if setting.Catalog == nil {
-			return nil, fmt.Errorf("setting `%s` needs a catalog to add entries from", setting.Name)
+		if setting.Catalog == nil && len(setting.Fields) == 0 {
+			return nil, fmt.Errorf("setting `%s` needs a catalog to add entries from, or the fields to ask for", setting.Name)
+		}
+		if setting.Catalog != nil && len(setting.Fields) > 0 {
+			return nil, fmt.Errorf("setting `%s` has both a catalog and fields, but can only add entries from one", setting.Name)
+		}
+		for _, entry := range setting.Suggested {
+			if label := setting.EntryLabel(entry); label == "" || label == "<nil>" {
+				return nil, fmt.Errorf("every suggested entry of setting `%s` needs a name", setting.Name)
+			}
+			// They're written to bbe.yaml, with nothing in the setting's secret
+			if _, secret := entry["secretFields"]; secret {
+				return nil, fmt.Errorf("suggested entry `%s` of setting `%s` can't have credentials", setting.EntryLabel(entry), setting.Name)
+			}
+		}
+		if len(setting.Fields) > 0 {
+			if err := validateSettingFields(setting); err != nil {
+				return nil, err
+			}
+			continue
 		}
 		if !slices.Contains(settingCatalogTypes, setting.Catalog.Type) {
 			return nil, fmt.Errorf("setting `%s` has catalog type `%s`, which bbe doesn't know", setting.Name, setting.Catalog.Type)
@@ -228,6 +305,45 @@ func parseSettings(annotation string) ([]models.ChartSetting, error) {
 	}
 
 	return settings, nil
+}
+
+func validateSettingFields(setting models.ChartSetting) error {
+	unique := 0
+	names := map[string]bool{}
+	for _, field := range setting.Fields {
+		if field.Name == "" {
+			return fmt.Errorf("every field of setting `%s` needs a name", setting.Name)
+		}
+		if names[field.Name] {
+			return fmt.Errorf("setting `%s` has two fields named `%s`", setting.Name, field.Name)
+		}
+		names[field.Name] = true
+		if field.Unique {
+			unique++
+		}
+		if _, err := regexp.Compile(field.Pattern); err != nil {
+			return fmt.Errorf("the pattern of field `%s` in setting `%s` isn't a regular expression: %w", field.Name, setting.Name, err)
+		}
+		if field.Generate && !field.Secret {
+			return fmt.Errorf("field `%s` in setting `%s` is generated, so it has to be secret", field.Name, setting.Name)
+		}
+		if field.Secret && setting.Secret == "" {
+			return fmt.Errorf("field `%s` in setting `%s` is secret, but the setting has no secret to keep it in", field.Name, setting.Name)
+		}
+		if field.Unique && (field.Secret || field.Optional || len(field.Options) > 0) {
+			return fmt.Errorf("field `%s` in setting `%s` names its entries, so it has to be typed in, required and not secret", field.Name, setting.Name)
+		}
+		for _, option := range field.Options {
+			if option.Name == "" || option.Value == nil {
+				return fmt.Errorf("every option of field `%s` in setting `%s` needs a name and a value", field.Name, setting.Name)
+			}
+		}
+	}
+	if unique != 1 {
+		return fmt.Errorf("setting `%s` needs one unique field, which names its entries", setting.Name)
+	}
+
+	return nil
 }
 
 // A namespace name, which Kubernetes limits to a DNS label

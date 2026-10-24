@@ -553,3 +553,175 @@ func Test_configureCommand_Fails_WhenAPromptFails(t *testing.T) {
 		m.pkg.AssertNotCalled(t, "UpgradePackage", mock.Anything, mock.Anything, mock.Anything)
 	}
 }
+
+var usersSetting = models.ChartSetting{
+	Name:   "users",
+	Values: "bbe.auth.users",
+	Secret: "bbe-auth-users",
+	Fields: []models.SettingField{
+		{Name: "username", Label: "Username", Description: "What they sign in with", Pattern: "^[a-z][a-z0-9]*$", Unique: true},
+		{Name: "email", Label: "Email", Pattern: "@"},
+		{Name: "firstName", Label: "First name", Optional: true},
+		{Name: "groups", Label: "Group", Options: []models.SettingFieldOption{
+			{Name: "users: Jellyfin and Seerr", Value: []interface{}{"users"}},
+			{Name: "admins: every app", Value: []interface{}{"admins"}},
+		}},
+		{Name: "recovery", Label: "Recovery code", Optional: true, Secret: true},
+		{Name: "password", Label: "First password", Generate: true, Secret: true},
+	},
+}
+
+var authChart = models.ChartEntry{Name: "bbe-auth", Version: "0.1.0", RepositoryUrl: "https://charts.example", RepositoryName: "bbe"}
+
+const usersActionTitle = "What would you like to do with the users?"
+
+func newUsersMocks(t *testing.T, users []interface{}) configureMocks {
+	m := configureMocks{
+		helper: &mocks.MockHelperService{}, ui: &mocks.MockUiService{}, config: &mocks.MockConfigService{},
+		pkg: &mocks.MockPackageService{}, helm: &mocks.MockHelmService{}, kubernetes: &mocks.MockKubernetesService{},
+		catalog: &mocks.MockCatalogService{}, stopped: new(bool),
+	}
+
+	bbeConfig := &models.BbeConfig{}
+	bbeConfig.Bbe.Cluster.Name = "present-sprite"
+	bbeConfig.Bbe.Cluster.Context = "admin@present-sprite"
+	auth := map[interface{}]interface{}{"admin": map[interface{}]interface{}{"username": "umbo"}}
+	if users != nil {
+		auth["users"] = users
+	}
+	bbeConfig.Bbe.Packages = []models.LocalPackage{
+		{Name: "bbe-auth", Version: "0.1.0", Values: map[string]interface{}{"bbe": map[interface{}]interface{}{"auth": auth}}},
+	}
+
+	m.bbeConfig = bbeConfig
+	m.config.On("GetBbeConfig", m.helper).Return(bbeConfig, nil)
+	m.config.On("UpdateBbePackages", m.helper, mock.Anything).Return(nil)
+	m.pkg.On("GetAll").Return([]models.ChartEntry{authChart}, nil)
+	m.helm.On("PullChart", "https://charts.example", "bbe-auth", "0.1.0").Return(&models.HelmChart{Name: "bbe-auth", Settings: []models.ChartSetting{usersSetting}}, nil)
+
+	original := generatePassword
+	generatePassword = func() (string, error) { return "generated-password", nil }
+	t.Cleanup(func() { generatePassword = original })
+
+	return m
+}
+
+func authValues(users ...interface{}) map[string]interface{} {
+	return map[string]interface{}{"bbe": map[string]interface{}{"auth": map[string]interface{}{
+		"admin": map[string]interface{}{"username": "umbo"},
+		"users": append([]interface{}{}, users...),
+	}}}
+}
+
+func Test_configureCommand_Succeeds_AddingAnEntryFromItsFields(t *testing.T) {
+	m := newUsersMocks(t, []interface{}{map[interface{}]interface{}{"username": "bob", "groups": []interface{}{"users"}}})
+	m.ui.On("CreateSelect", usersActionTitle, actionsWithEntries).Return("Add", nil).Once()
+	// Required, then not matching the pattern, then taken, then fine
+	m.ui.On("CreateInput", "Username (What they sign in with)", "").Return(" ", nil).Once()
+	m.ui.On("CreateInput", "Username (What they sign in with)", "").Return("Alice", nil).Once()
+	m.ui.On("CreateInput", "Username (What they sign in with)", "").Return("bob", nil).Once()
+	m.ui.On("CreateInput", "Username (What they sign in with)", "").Return("alice", nil).Once()
+	m.ui.On("CreateInput", "Email", "").Return("alice@example.com", nil)
+	m.ui.On("CreateInput", "First name", "").Return("", nil)
+	m.ui.On("CreateSelect", "Group", []string{"users: Jellyfin and Seerr", "admins: every app"}).Return("admins: every app", nil)
+	m.ui.On("CreatePassword", "Recovery code").Return("1234", nil)
+	m.ui.On("CreateSelect", usersActionTitle, actionsWithEntries).Return("Done", nil).Once()
+	m.kubernetes.On("SetSecretValues", "admin@present-sprite", "bbe-auth", "bbe-auth-users", map[string]string{"alice.recovery": "1234", "alice.password": "generated-password"}).Return(nil)
+	expected := authValues(
+		map[string]interface{}{"username": "bob", "groups": []interface{}{"users"}},
+		map[string]interface{}{
+			"username":     "alice",
+			"email":        "alice@example.com",
+			"groups":       []interface{}{"admins"},
+			"secretFields": map[string]interface{}{"recovery": "alice.recovery", "password": "alice.password"},
+		},
+	)
+	m.pkg.On("UpgradePackage", authChart, expected, true).Return(expected, nil)
+
+	err := m.run("bbe-auth")
+
+	assert.NoError(t, err)
+	m.pkg.AssertCalled(t, "UpgradePackage", authChart, expected, true)
+	m.kubernetes.AssertCalled(t, "SetSecretValues", "admin@present-sprite", "bbe-auth", "bbe-auth-users", map[string]string{"alice.recovery": "1234", "alice.password": "generated-password"})
+}
+
+func Test_configureCommand_Succeeds_RemovingAnEntryWithFieldsAndItsSecrets(t *testing.T) {
+	m := newUsersMocks(t, []interface{}{
+		map[interface{}]interface{}{"username": "alice", "email": "alice@example.com", "groups": []interface{}{"admins"}, "secretFields": map[interface{}]interface{}{"password": "alice.password"}},
+		map[interface{}]interface{}{"username": "bob"},
+	})
+	m.ui.On("CreateSelect", usersActionTitle, actionsWithEntries).Return("Remove", nil).Once()
+	m.ui.On("CreateSelect", "Which of the users would you like to remove?", []string{"alice", "bob", "Cancel"}).Return("alice", nil)
+	m.ui.On("CreateSelect", usersActionTitle, actionsWithEntries).Return("Done", nil).Once()
+	expected := authValues(map[string]interface{}{"username": "bob"})
+	m.pkg.On("UpgradePackage", authChart, expected, true).Return(expected, nil)
+	m.kubernetes.On("RemoveSecretValues", "admin@present-sprite", "bbe-auth", "bbe-auth-users", []string{"alice.password"}).Return(nil)
+
+	err := m.run("bbe-auth")
+
+	assert.NoError(t, err)
+	m.kubernetes.AssertCalled(t, "RemoveSecretValues", "admin@present-sprite", "bbe-auth", "bbe-auth-users", []string{"alice.password"})
+}
+
+func Test_settingEditor_Describes_EntriesWithFields(t *testing.T) {
+	editor := &settingEditor{setting: usersSetting}
+
+	assert.Equal(t, "alice (alice@example.com, admins, users)", editor.describe(map[string]interface{}{
+		"username": "alice", "email": "alice@example.com", "groups": []interface{}{"admins", "users"}, "secretFields": map[string]interface{}{"password": "alice.password"},
+	}))
+	assert.Equal(t, "bob", editor.describe(map[string]interface{}{"username": "bob"}))
+}
+
+func Test_configureCommand_Fails_WhenAPasswordCannotBeGenerated(t *testing.T) {
+	m := newUsersMocks(t, nil)
+	generatePassword = func() (string, error) { return "", errors.New("Failed to generate a password: no randomness") }
+	m.ui.On("CreateSelect", usersActionTitle, actionsWithoutEntries).Return("Add", nil).Once()
+	m.ui.On("CreateInput", "Username (What they sign in with)", "").Return("alice", nil)
+	m.ui.On("CreateInput", "Email", "").Return("alice@example.com", nil)
+	m.ui.On("CreateInput", "First name", "").Return("", nil)
+	m.ui.On("CreateSelect", "Group", mock.Anything).Return("users: Jellyfin and Seerr", nil)
+	m.ui.On("CreatePassword", "Recovery code").Return("", nil)
+
+	err := m.run("bbe-auth")
+
+	assert.EqualError(t, err, "Failed to generate a password: no randomness")
+	m.pkg.AssertNotCalled(t, "UpgradePackage", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func Test_generatePassword(t *testing.T) {
+	first, err := generatePassword()
+	assert.NoError(t, err)
+	second, _ := generatePassword()
+
+	assert.Regexp(t, "^[A-HJ-NP-Za-km-np-z2-9]{20}$", first)
+	assert.NotEqual(t, first, second)
+}
+
+func Test_configureCommand_Fails_WhenAFieldsPromptFails(t *testing.T) {
+	prompts := map[string]func(m configureMocks){
+		"input": func(m configureMocks) {
+			m.ui.On("CreateInput", "Username (What they sign in with)", "").Return("", errors.New("Mock prompt failed"))
+		},
+		"choice": func(m configureMocks) {
+			m.ui.On("CreateInput", "Username (What they sign in with)", "").Return("alice", nil)
+			m.ui.On("CreateInput", "Email", "").Return("alice@example.com", nil)
+			m.ui.On("CreateInput", "First name", "").Return("", nil)
+			m.ui.On("CreateSelect", "Group", mock.Anything).Return("", errors.New("Mock prompt failed"))
+		},
+	}
+
+	for name, prompt := range prompts {
+		m := newUsersMocks(t, nil)
+		m.ui.On("CreateSelect", usersActionTitle, actionsWithoutEntries).Return("Add", nil).Once()
+		prompt(m)
+
+		err := m.run("bbe-auth")
+
+		assert.EqualError(t, err, "Mock prompt failed", name)
+	}
+}
+
+func Test_fieldLabel_FallsBackToTheFieldsName(t *testing.T) {
+	assert.Equal(t, "email", fieldLabel(models.SettingField{Name: "email"}))
+	assert.Equal(t, "Email", fieldLabel(models.SettingField{Name: "email", Label: "Email"}))
+}

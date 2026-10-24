@@ -60,7 +60,7 @@ func (runner *prerequisiteRunner) ensureOne(pkg models.ChartEntry, prerequisite 
 		return err
 	}
 
-	missing, err := runner.prerequisiteService.Check(prerequisite, cluster)
+	missing, err := runner.missing(prerequisite, cluster)
 	if err != nil {
 		return err
 	}
@@ -121,6 +121,18 @@ func (runner *prerequisiteRunner) ensureOne(pkg models.ChartEntry, prerequisite 
 	}
 
 	return nil
+}
+
+// What the cluster lacks for the prerequisite. One that only names a package needs that package installed
+func (runner *prerequisiteRunner) missing(prerequisite models.ChartPrerequisite, cluster models.ClusterAccess) ([]string, error) {
+	if prerequisite.StorageClass != "" || prerequisite.Talos != nil {
+		return runner.prerequisiteService.Check(prerequisite, cluster)
+	}
+
+	if runner.helmService.IsPackageInstalled(prerequisite.Package, prerequisite.Package, cluster.KubeContext) {
+		return nil, nil
+	}
+	return []string{fmt.Sprintf("the `%s` package", prerequisite.Package)}, nil
 }
 
 func describeFix(prerequisite models.ChartPrerequisite) string {

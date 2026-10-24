@@ -18,3 +18,8 @@ func (mock *MockIpFinderService) GetGatewayIp(helperService interfaces.HelperSer
 	args := mock.Called(helperService)
 	return args.String(0), args.Error(1)
 }
+
+func (mock *MockIpFinderService) GetLocalIp(nodeIp string) (string, error) {
+	args := mock.Called(nodeIp)
+	return args.String(0), args.Error(1)
+}

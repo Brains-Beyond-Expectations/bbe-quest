@@ -8,13 +8,19 @@ package models
 const TalosConfigApiVersion = "v1alpha1"
 
 const (
-	TalosLinkConfigKind              = "LinkConfig"
-	TalosHostnameConfigKind          = "HostnameConfig"
-	TalosUnattendedInstallConfigKind = "UnattendedInstallConfig"
-	TalosKubeClusterConfigKind       = "KubeClusterConfig"
-	TalosResolverConfigKind          = "ResolverConfig"
-	TalosKubeNodeConfigKind          = "KubeNodeConfig"
-	TalosUserVolumeConfigKind        = "UserVolumeConfig"
+	TalosLinkConfigKind                  = "LinkConfig"
+	TalosHostnameConfigKind              = "HostnameConfig"
+	TalosUnattendedInstallConfigKind     = "UnattendedInstallConfig"
+	TalosKubeClusterConfigKind           = "KubeClusterConfig"
+	TalosResolverConfigKind              = "ResolverConfig"
+	TalosKubeNodeConfigKind              = "KubeNodeConfig"
+	TalosUserVolumeConfigKind            = "UserVolumeConfig"
+	TalosKubeNetworkConfigKind           = "KubeNetworkConfig"
+	TalosKubeFlannelCNIConfigKind        = "KubeFlannelCNIConfig"
+	TalosKubeControllerManagerConfigKind = "KubeControllerManagerConfig"
+	TalosKubeSchedulerConfigKind         = "KubeSchedulerConfig"
+	TalosKubeProxyConfigKind             = "KubeProxyConfig"
+	TalosNetworkRuleConfigKind           = "NetworkRuleConfig"
 )
 
 // TalosControlPlaneTaint keeps workloads off control plane nodes; removing it is what
@@ -26,12 +32,24 @@ const TalosControlPlaneTaint = "node-role.kubernetes.io/control-plane"
 // tokens, is preserved through the inlined Unmapped fields.
 type TalosMachineConfig struct {
 	Machine  TalosMachine           `yaml:"machine,omitempty"`
+	Cluster  TalosCluster           `yaml:"cluster,omitempty"`
 	Unmapped map[string]interface{} `yaml:",inline"`
 }
 
 type TalosMachine struct {
 	Time     TalosMachineTime       `yaml:"time,omitempty"`
 	Unmapped map[string]interface{} `yaml:",inline"`
+}
+
+type TalosCluster struct {
+	Etcd     TalosEtcd              `yaml:"etcd,omitempty"`
+	Unmapped map[string]interface{} `yaml:",inline"`
+}
+
+// TalosEtcd is etcd's configuration, which in Talos v1.14 is still part of the primary document
+type TalosEtcd struct {
+	ExtraArgs map[string]interface{} `yaml:"extraArgs,omitempty"`
+	Unmapped  map[string]interface{} `yaml:",inline"`
 }
 
 // TalosMachineTime configures NTP. Talos falls back to a public time server when no servers
@@ -95,8 +113,15 @@ type TalosHostnameConfig struct {
 type TalosUnattendedInstallConfig struct {
 	ApiVersion   string                 `yaml:"apiVersion,omitempty"`
 	Kind         string                 `yaml:"kind,omitempty"`
+	Installer    TalosInstaller         `yaml:"installer,omitempty"`
 	Provisioning TalosProvisioning      `yaml:"provisioning,omitempty"`
 	Unmapped     map[string]interface{} `yaml:",inline"`
+}
+
+// TalosInstaller is the image Talos installs itself to disk from, whose system extensions the node then has
+type TalosInstaller struct {
+	Image    string                 `yaml:"image,omitempty"`
+	Unmapped map[string]interface{} `yaml:",inline"`
 }
 
 type TalosProvisioning struct {
@@ -134,4 +159,58 @@ type TalosUserVolumeConfig struct {
 	Name       string                 `yaml:"name"`
 	VolumeType string                 `yaml:"volumeType,omitempty"`
 	Unmapped   map[string]interface{} `yaml:",inline"`
+}
+
+// TalosKubeNetworkConfig holds the cluster's pod and service subnets
+type TalosKubeNetworkConfig struct {
+	ApiVersion string                 `yaml:"apiVersion,omitempty"`
+	Kind       string                 `yaml:"kind,omitempty"`
+	PodSubnets []string               `yaml:"podSubnets,omitempty"`
+	Unmapped   map[string]interface{} `yaml:",inline"`
+}
+
+// TalosKubeFlannelCNIConfig configures Flannel, the network Talos sets up for pods. With kubeNetworkPoliciesEnabled,
+// Talos runs kube-network-policies alongside it, without which NetworkPolicies are accepted but not enforced
+type TalosKubeFlannelCNIConfig struct {
+	ApiVersion                 string                 `yaml:"apiVersion,omitempty"`
+	Kind                       string                 `yaml:"kind,omitempty"`
+	KubeNetworkPoliciesEnabled bool                   `yaml:"kubeNetworkPoliciesEnabled,omitempty"`
+	Unmapped                   map[string]interface{} `yaml:",inline"`
+}
+
+// TalosKubeComponentConfig is the part bbe changes of the documents configuring the controller manager and the
+// scheduler: their command line arguments
+type TalosKubeComponentConfig struct {
+	ApiVersion string                 `yaml:"apiVersion,omitempty"`
+	Kind       string                 `yaml:"kind,omitempty"`
+	ExtraArgs  map[string]interface{} `yaml:"extraArgs,omitempty"`
+	Unmapped   map[string]interface{} `yaml:",inline"`
+}
+
+// TalosKubeProxyConfig configures kube-proxy, through its own configuration file rather than arguments
+type TalosKubeProxyConfig struct {
+	ApiVersion string                 `yaml:"apiVersion,omitempty"`
+	Kind       string                 `yaml:"kind,omitempty"`
+	Config     map[string]interface{} `yaml:"config,omitempty"`
+	Unmapped   map[string]interface{} `yaml:",inline"`
+}
+
+// TalosNetworkRuleConfig is a rule of the node's firewall. While its default action is to accept, Talos drops new
+// connections to the rule's ports from anywhere outside its subnets, and leaves every other port open
+type TalosNetworkRuleConfig struct {
+	ApiVersion   string                    `yaml:"apiVersion"`
+	Kind         string                    `yaml:"kind"`
+	Name         string                    `yaml:"name"`
+	PortSelector TalosNetworkPortSelector  `yaml:"portSelector"`
+	Ingress      []TalosNetworkRuleIngress `yaml:"ingress"`
+}
+
+// TalosNetworkPortSelector lists ports as numbers, and ranges as text such as "2379-2380", which Talos requires
+type TalosNetworkPortSelector struct {
+	Ports    []interface{} `yaml:"ports"`
+	Protocol string        `yaml:"protocol"`
+}
+
+type TalosNetworkRuleIngress struct {
+	Subnet string `yaml:"subnet"`
 }

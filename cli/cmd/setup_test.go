@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"errors"
+	"net/netip"
 	"strings"
 	"testing"
 	"time"
@@ -591,6 +592,7 @@ func Test_setupCommand_Fails__WhenFailingToModifyConfigDisk(t *testing.T) {
 func Test_setupCommand_Fails__WhenFailingToJoinCluster(t *testing.T) {
 	helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp := initSetupTests()
 
+	talosService.On("ModifyInstallerImage", helperService, mock.Anything, mock.Anything).Return(nil)
 	talosService.On("JoinCluster", helperService, nodeIp, mock.Anything).Return(errors.New("test error"))
 
 	mockSuccessfulSetupFlow(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp, true)
@@ -780,6 +782,12 @@ func mockSuccessfulSetupFlow(helperService *mocks.MockHelperService, dependencyS
 	uiService.On("CreateInput", "Please enter what you want to name your cluster", mock.Anything).Return("talos-cluster", nil)
 	uiService.On("CreateSelect", "Do you want to allow scheduling on the control plane? This is required if you have only one node.", mock.Anything).Return("Yes", nil)
 	talosService.On("GenerateConfig", helperService, chosenIp, "talos-cluster", mock.Anything).Return(nil)
+	ipFinderService.On("GetLocalIp", chosenIp).Return("5.6.7.100", nil)
+	helperService.On("IsWsl").Return(false)
+	uiService.On("CreateInput", mock.MatchedBy(startsWith("Which networks may reach the Talos and Kubernetes APIs?")), "5.6.7.0/24").Return("5.6.7.0/24", nil)
+	talosService.On("ModifyNetworkPolicies", helperService).Return(nil)
+	talosService.On("ModifyControlPlaneMetrics", helperService).Return(nil)
+	talosService.On("ModifyFirewall", helperService, mock.Anything, mock.Anything).Return(nil)
 	talosService.On("GetControlPlaneIp", helperService, constants.ControlplaneConfigFile).Return(chosenIp, nil)
 	talosService.On("ModifyNetworkNodeIp", helperService, nodeTypeConfigFile, chosenIp).Return(nil)
 	talosService.On("GetNetworkInterface", helperService, nodeIp).Return("eth0", nil)
@@ -792,9 +800,155 @@ func mockSuccessfulSetupFlow(helperService *mocks.MockHelperService, dependencyS
 	talosService.On("ModifySchedulingOnControlPlane", helperService, true).Return(nil)
 	talosService.On("ModifyConfigDisk", helperService, nodeTypeConfigFile, "/dev/sda").Return(nil)
 	talosService.On("WarnIfTalosVersionMismatch", mock.Anything).Return()
+	talosService.On("ModifyInstallerImage", helperService, mock.Anything, mock.Anything).Return(nil)
 	talosService.On("JoinCluster", helperService, nodeIp, nodeTypeConfigFile).Return(nil)
 	talosService.On("BootstrapCluster", helperService, chosenIp, chosenIp).Return(nil)
 	talosService.On("VerifyNodeHealth", helperService, chosenIp, chosenIp).Return(nil)
 	talosService.On("DownloadKubeConfig", helperService, chosenIp, chosenIp).Return(nil)
 	configService.On("UpdateBbeClusterName", helperService, "talos-cluster").Return(nil)
+}
+
+func Test_setupCommand_Fails__WhenFailingToModifyInstallerImage(t *testing.T) {
+	helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp := initSetupTests()
+
+	talosService.On("ModifyInstallerImage", helperService, mock.Anything, mock.Anything).Return(errors.New("test error"))
+
+	mockSuccessfulSetupFlow(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp, true)
+
+	err := setupCommand(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService)
+
+	assert.ErrorContains(t, err, "installer image")
+	talosService.AssertNumberOfCalls(t, "JoinCluster", 0)
+}
+
+func Test_setupCommand_Succeeds_WithControlPlane_SettingUpPoliciesMetricsAndFirewallForEveryNode(t *testing.T) {
+	helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp := initSetupTests()
+
+	mockSuccessfulSetupFlow(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp, true)
+
+	err := setupCommand(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService)
+
+	assert.Nil(t, err)
+	talosService.AssertNumberOfCalls(t, "ModifyNetworkPolicies", 1)
+	talosService.AssertNumberOfCalls(t, "ModifyControlPlaneMetrics", 1)
+	talosService.AssertCalled(t, "ModifyFirewall", helperService, constants.ControlplaneConfigFile, []string{"5.6.7.0/24"})
+	talosService.AssertCalled(t, "ModifyFirewall", helperService, constants.WorkerConfigFile, []string{"5.6.7.0/24"})
+}
+
+func Test_setupCommand_Succeeds_WithWorkerNode_KeepingTheClusterSettings(t *testing.T) {
+	helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp := initSetupTests()
+
+	uiService.On("CreateSelect", "Is this the first node in your cluster?", mock.Anything).Return("No", nil)
+	configService.On("CheckForTalosConfigs", helperService).Return(true)
+
+	mockSuccessfulSetupFlow(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp, false)
+
+	err := setupCommand(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService)
+
+	assert.Nil(t, err)
+	ipFinderService.AssertNumberOfCalls(t, "GetLocalIp", 0)
+	talosService.AssertNumberOfCalls(t, "ModifyNetworkPolicies", 0)
+	talosService.AssertNumberOfCalls(t, "ModifyControlPlaneMetrics", 0)
+	talosService.AssertNumberOfCalls(t, "ModifyFirewall", 0)
+}
+
+func Test_setupCommand_Succeeds_AskingAgain_WhenTheNetworksLeaveOutTheNode(t *testing.T) {
+	helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp := initSetupTests()
+
+	uiService.On("CreateInput", mock.MatchedBy(startsWith("Which networks may reach the Talos and Kubernetes APIs?")), "5.6.7.0/24").Return("10.0.0.0/24", nil)
+	uiService.On("CreateInput", mock.MatchedBy(startsWith("None of them includes the node's address, 5.6.7.8. Please enter the networks again:")), "5.6.7.0/24").Return("5.6.7.0/24, 10.0.0.0/24", nil)
+
+	mockSuccessfulSetupFlow(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp, true)
+
+	err := setupCommand(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService)
+
+	assert.Nil(t, err)
+	talosService.AssertCalled(t, "ModifyFirewall", helperService, constants.ControlplaneConfigFile, []string{"5.6.7.0/24", "10.0.0.0/24"})
+}
+
+func Test_setupCommand_Succeeds_SuggestingTheNodesNetwork_WhenThisComputersAddressIsUnknown(t *testing.T) {
+	helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp := initSetupTests()
+
+	ipFinderService.On("GetLocalIp", chosenIp).Return("", errors.New("test error"))
+
+	mockSuccessfulSetupFlow(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp, true)
+
+	err := setupCommand(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService)
+
+	assert.Nil(t, err)
+	talosService.AssertCalled(t, "ModifyFirewall", helperService, constants.WorkerConfigFile, []string{"5.6.7.0/24"})
+}
+
+func Test_setupCommand_Fails_WhenFailingToModifyNetworkPolicies(t *testing.T) {
+	helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp := initSetupTests()
+
+	talosService.On("ModifyNetworkPolicies", helperService).Return(errors.New("test error"))
+
+	mockSuccessfulSetupFlow(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp, true)
+
+	err := setupCommand(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService)
+
+	assert.ErrorContains(t, err, "network policies")
+	talosService.AssertNumberOfCalls(t, "JoinCluster", 0)
+}
+
+func Test_setupCommand_Fails_WhenFailingToModifyControlPlaneMetrics(t *testing.T) {
+	helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp := initSetupTests()
+
+	talosService.On("ModifyControlPlaneMetrics", helperService).Return(errors.New("test error"))
+
+	mockSuccessfulSetupFlow(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp, true)
+
+	err := setupCommand(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService)
+
+	assert.ErrorContains(t, err, "metrics")
+	talosService.AssertNumberOfCalls(t, "JoinCluster", 0)
+}
+
+func Test_setupCommand_Fails_WhenFailingToModifyFirewall(t *testing.T) {
+	helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp := initSetupTests()
+
+	talosService.On("ModifyFirewall", helperService, constants.WorkerConfigFile, mock.Anything).Return(errors.New("test error"))
+
+	mockSuccessfulSetupFlow(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp, true)
+
+	err := setupCommand(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService)
+
+	assert.ErrorContains(t, err, "firewall")
+	talosService.AssertNumberOfCalls(t, "JoinCluster", 0)
+}
+
+func Test_parseTrustedNetworks_Succeeds_WithSeveralNetworks(t *testing.T) {
+	networks, problem := parseTrustedNetworks(" 192.168.1.17/24,, 10.0.0.5/32 ", netip.MustParseAddr("192.168.1.161"), "10.0.0.5", false)
+
+	assert.Equal(t, "", problem)
+	assert.Equal(t, []string{"192.168.1.0/24", "10.0.0.5/32"}, networks)
+}
+
+func Test_parseTrustedNetworks_Fails_WithSomethingElseThanANetwork(t *testing.T) {
+	networks, problem := parseTrustedNetworks("192.168.1.0/24, 10.0.0.5", netip.MustParseAddr("192.168.1.161"), "", false)
+
+	assert.Nil(t, networks)
+	assert.Equal(t, "10.0.0.5 isn't a network such as 192.168.1.0/24", problem)
+}
+
+func Test_parseTrustedNetworks_Fails_WithNothing(t *testing.T) {
+	networks, problem := parseTrustedNetworks(" , ", netip.MustParseAddr("192.168.1.161"), "", false)
+
+	assert.Nil(t, networks)
+	assert.Equal(t, "No network was entered", problem)
+}
+
+func Test_parseTrustedNetworks_Fails_WithoutThisComputer(t *testing.T) {
+	networks, problem := parseTrustedNetworks("192.168.1.0/24", netip.MustParseAddr("192.168.1.161"), "192.168.2.20", false)
+
+	assert.Nil(t, networks)
+	assert.Equal(t, "None of them includes this computer's address, 192.168.2.20, which would lock bbe out of the node", problem)
+}
+
+func Test_parseTrustedNetworks_Succeeds_WithoutThisComputer_InWsl(t *testing.T) {
+	networks, problem := parseTrustedNetworks("192.168.1.0/24", netip.MustParseAddr("192.168.1.161"), "172.20.0.2", true)
+
+	assert.Equal(t, "", problem)
+	assert.Equal(t, []string{"192.168.1.0/24"}, networks)
 }

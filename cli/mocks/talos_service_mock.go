@@ -81,6 +81,11 @@ func (m *MockTalosService) ModifyConfigDisk(helperService interfaces.HelperServi
 	return args.Error(0)
 }
 
+func (m *MockTalosService) ModifyInstallerImage(helperService interfaces.HelperServiceInterface, configFile string, image string) error {
+	args := m.Called(helperService, configFile, image)
+	return args.Error(0)
+}
+
 func (m *MockTalosService) ModifySchedulingOnControlPlane(helperService interfaces.HelperServiceInterface, allowScheduling bool) error {
 	args := m.Called(helperService, allowScheduling)
 	return args.Error(0)
@@ -112,5 +117,20 @@ func (m *MockTalosService) WarnIfTalosVersionMismatch(expectedVersion string) {
 
 func (m *MockTalosService) ModifyUserVolumes(helperService interfaces.HelperServiceInterface, configFile string, names []string) error {
 	args := m.Called(helperService, configFile, names)
+	return args.Error(0)
+}
+
+func (m *MockTalosService) ModifyNetworkPolicies(helperService interfaces.HelperServiceInterface) error {
+	args := m.Called(helperService)
+	return args.Error(0)
+}
+
+func (m *MockTalosService) ModifyControlPlaneMetrics(helperService interfaces.HelperServiceInterface) error {
+	args := m.Called(helperService)
+	return args.Error(0)
+}
+
+func (m *MockTalosService) ModifyFirewall(helperService interfaces.HelperServiceInterface, configFile string, trustedNetworks []string) error {
+	args := m.Called(helperService, configFile, trustedNetworks)
 	return args.Error(0)
 }

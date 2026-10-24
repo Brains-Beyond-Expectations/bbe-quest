@@ -333,3 +333,36 @@ func indexOfCall(calls []mock.Call, method string, n int) int {
 
 	return -1
 }
+
+var authNeeded = models.ChartPrerequisite{Name: "sso", Package: "bbe-auth"}
+var authPackage = models.ChartEntry{Name: "bbe-auth", Version: "1.0.0"}
+
+func Test_prerequisiteRunner_Succeeds_WhenThePackageItNeedsIsInstalled(t *testing.T) {
+	runner, m := newTestRunner(nil, true)
+	helmService := &mocks.MockHelmService{}
+	helmService.On("IsPackageInstalled", "bbe-auth", "bbe-auth", "admin@test").Return(true)
+	runner.helmService = helmService
+	m.packageService.On("GetPrerequisites", mediaPackage).Return([]models.ChartPrerequisite{authNeeded}, nil)
+
+	err := runner.ensure(mediaPackage)
+
+	assert.NoError(t, err)
+	assert.Empty(t, m.installed)
+	m.prerequisiteService.AssertNotCalled(t, "Check", mock.Anything, mock.Anything)
+}
+
+func Test_prerequisiteRunner_Succeeds_InstallingThePackageItNeeds(t *testing.T) {
+	runner, m := newTestRunner(nil, true)
+	runner.allPackages = append(runner.allPackages, authPackage)
+	helmService := &mocks.MockHelmService{}
+	helmService.On("IsPackageInstalled", "bbe-auth", "bbe-auth", "admin@test").Return(false)
+	runner.helmService = helmService
+	m.packageService.On("GetPrerequisites", mediaPackage).Return([]models.ChartPrerequisite{authNeeded}, nil)
+	m.packageService.On("GetPrerequisites", authPackage).Return(nil, nil)
+	m.uiService.On("CreateSelect", "Set up sso for `bbe-media` now? bbe installs the `bbe-auth` package", []string{"Yes", "No"}).Return("Yes", nil)
+
+	err := runner.ensure(mediaPackage)
+
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"bbe-auth"}, m.installed)
+}

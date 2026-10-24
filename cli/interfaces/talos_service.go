@@ -12,11 +12,15 @@ type TalosServiceInterface interface {
 	GetNetworkInterface(helperService HelperServiceInterface, nodeIp string) (string, error)
 	JoinCluster(helperService HelperServiceInterface, nodeIp string, nodeConfigFile string) error
 	ModifyConfigDisk(helperService HelperServiceInterface, configFile string, disk string) error
+	ModifyInstallerImage(helperService HelperServiceInterface, configFile string, image string) error
+	ModifyFirewall(helperService HelperServiceInterface, configFile string, trustedNetworks []string) error
 	ModifyNetworkGateway(helperService HelperServiceInterface, configFile string, gatewayIp string) error
 	ModifyNetworkHostname(helperService HelperServiceInterface, configFile string, hostname string) error
 	ModifyNetworkInterface(helperService HelperServiceInterface, configFile string, networkInterfaceName string) error
+	ModifyControlPlaneMetrics(helperService HelperServiceInterface) error
 	ModifyDnsServer(helperService HelperServiceInterface, configFile string, dnsServer string) error
 	ModifyNetworkNodeIp(helperService HelperServiceInterface, configFile string, nodeIp string) error
+	ModifyNetworkPolicies(helperService HelperServiceInterface) error
 	ModifySchedulingOnControlPlane(helperService HelperServiceInterface, allowScheduling bool) error
 	ModifyTimeServer(helperService HelperServiceInterface, configFile string, timeServer string) error
 	ModifyUserVolumes(helperService HelperServiceInterface, configFile string, names []string) error
