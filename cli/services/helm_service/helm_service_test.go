@@ -569,3 +569,41 @@ func Test_Helm_Service_Checks_The_Helm_Version_Once(t *testing.T) {
 	}
 	helmVersionChecked = true
 }
+
+func Test_Helm_Service_Succeeds_GetValues(t *testing.T) {
+	var receivedArgs []string
+	execCommand = func(_ string, args ...string) *exec.Cmd {
+		receivedArgs = args
+		return exec.Command("echo", `{"bbe":{"music":{"nfs":{"server":"192.168.1.219"}}}}`)
+	}
+
+	helmService := HelmService{}
+	values, err := helmService.GetValues("bbe-music", "bbe-music", "admin@test")
+
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"get", "values", "bbe-music", "--namespace", "bbe-music", "--kube-context", "admin@test", "--output", "json"}, receivedArgs)
+	assert.Equal(t, map[string]interface{}{"bbe": map[string]interface{}{"music": map[string]interface{}{"nfs": map[string]interface{}{"server": "192.168.1.219"}}}}, values)
+}
+
+func Test_Helm_Service_Succeeds_GetValues_Without_Values(t *testing.T) {
+	execCommand = func(_ string, _ ...string) *exec.Cmd {
+		return exec.Command("echo", "null")
+	}
+
+	helmService := HelmService{}
+	values, err := helmService.GetValues("bbe-storage", "bbe-storage", "admin@test")
+
+	assert.NoError(t, err)
+	assert.Nil(t, values)
+}
+
+func Test_Helm_Service_Fails_GetValues(t *testing.T) {
+	execCommand = func(_ string, _ ...string) *exec.Cmd {
+		return exec.Command("false")
+	}
+
+	helmService := HelmService{}
+	_, err := helmService.GetValues("bbe-music", "bbe-music", "admin@test")
+
+	assert.EqualError(t, err, "Failed to read the values of helm package `bbe-music`: exit status 1")
+}

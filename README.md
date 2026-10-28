@@ -45,7 +45,7 @@ packages, making your devices find and trust the apps, adding your household, an
 |---|---|
 | `bbe setup` | Installs Talos on a node, and creates the cluster or adds the node to it |
 | `bbe install` | Installs packages, and what they need first |
-| `bbe upgrade` | Upgrades the installed packages |
+| `bbe upgrade` | Upgrades the installed packages, and applies the values you change in `~/.bbe/bbe.yaml` |
 | `bbe configure <package>` | Adds to and removes from a package's settings, such as the people in bbe-auth or the indexers in bbe-media |
 | `bbe uninstall <package>` | Removes a package, after listing what it keeps |
 
