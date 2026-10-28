@@ -8,6 +8,7 @@ type HelmServiceInterface interface {
 	UpgradeChart(pkgName string, chartName string, repoName string, version string, namespace string, context string, values map[string]interface{}) error
 	UninstallChart(pkgName string, namespace string, context string) error
 	IsPackageInstalled(pkgName string, namespace string, context string) bool
+	GetValues(pkgName string, namespace string, context string) (map[string]interface{}, error)
 	PullChart(repositoryUrl string, chartName string, version string) (*models.HelmChart, error)
 	PrepareNamespace(namespace string, context string, podSecurity string) error
 	ApplyCrds(context string, crds []string) error

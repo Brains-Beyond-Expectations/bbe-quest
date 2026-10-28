@@ -205,6 +205,27 @@ func (HelmService HelmService) IsPackageInstalled(pkgName string, namespace stri
 	return true
 }
 
+// The values a package was installed or last upgraded with, as bbe gave them to helm, without the chart's defaults
+func (HelmService HelmService) GetValues(pkgName string, namespace string, context string) (map[string]interface{}, error) {
+	cmd := execCommand("helm", "get", "values", pkgName,
+		"--namespace", namespace,
+		"--kube-context", context,
+		"--output", "json",
+	)
+	response, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("Failed to read the values of helm package `%s`: %w", pkgName, err)
+	}
+
+	// Helm answers `null` for a package installed without values
+	var values map[string]interface{}
+	if err := json.Unmarshal(response, &values); err != nil {
+		return nil, fmt.Errorf("Failed to read the values of helm package `%s`: %w", pkgName, err)
+	}
+
+	return values, nil
+}
+
 // The labels the pod security admission reads, see https://kubernetes.io/docs/concepts/security/pod-security-admission
 var podSecurityModes = []string{"enforce", "audit", "warn"}
 

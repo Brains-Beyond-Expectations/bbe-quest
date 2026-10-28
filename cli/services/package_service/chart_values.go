@@ -1,10 +1,12 @@
 package package_service
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
 	"math"
+	"reflect"
 	"regexp"
 	"slices"
 	"strconv"
@@ -513,4 +515,83 @@ func describePaths(values []models.RequiredChartValue) string {
 	}
 
 	return strings.Join(paths, ", ")
+}
+
+// The values bbe.yaml changes from those a package runs with, one per line, such as
+// `bbe.music.nfs.server: "/volume1/bbe-media" → "192.168.1.219"`. A value that's unset, empty or null counts as the same
+func ValueChanges(deployed map[string]interface{}, wanted map[string]interface{}) []string {
+	var changes []string
+	collectValueChanges("", comparableValues(deployed), comparableValues(wanted), &changes)
+	slices.Sort(changes)
+	return changes
+}
+
+// Values as JSON reads them, so a number from bbe.yaml equals the same number from helm
+func comparableValues(values map[string]interface{}) interface{} {
+	content, err := json.Marshal(normalizeValues(values))
+	if err != nil {
+		return values
+	}
+	var comparable interface{}
+	if err := json.Unmarshal(content, &comparable); err != nil {
+		return values
+	}
+	return comparable
+}
+
+func collectValueChanges(path string, deployed interface{}, wanted interface{}, changes *[]string) {
+	if isEmptyValue(deployed) && isEmptyValue(wanted) {
+		return
+	}
+
+	deployedMap, deployedIsMap := deployed.(map[string]interface{})
+	wantedMap, wantedIsMap := wanted.(map[string]interface{})
+	if (deployedIsMap || deployed == nil) && (wantedIsMap || wanted == nil) {
+		for _, key := range slices.Sorted(maps.Keys(mergedKeys(deployedMap, wantedMap))) {
+			nested := key
+			if path != "" {
+				nested = path + "." + key
+			}
+			collectValueChanges(nested, deployedMap[key], wantedMap[key], changes)
+		}
+		return
+	}
+
+	if !reflect.DeepEqual(deployed, wanted) {
+		*changes = append(*changes, fmt.Sprintf("%s: %s → %s", path, describeValue(deployed), describeValue(wanted)))
+	}
+}
+
+func mergedKeys(first map[string]interface{}, second map[string]interface{}) map[string]bool {
+	keys := map[string]bool{}
+	for key := range first {
+		keys[key] = true
+	}
+	for key := range second {
+		keys[key] = true
+	}
+	return keys
+}
+
+func isEmptyValue(value interface{}) bool {
+	switch typed := value.(type) {
+	case nil:
+		return true
+	case map[string]interface{}:
+		return len(typed) == 0
+	case []interface{}:
+		return len(typed) == 0
+	}
+	return false
+}
+
+func describeValue(value interface{}) string {
+	if value == nil {
+		return "(unset)"
+	}
+	content, err := json.Marshal(value)
+	if err != nil {
+		return fmt.Sprint(value)
+	}
+	return string(content)
 }
