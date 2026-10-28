@@ -39,6 +39,12 @@ func (m *MockHelmService) IsPackageInstalled(pkgName string, namespace string, c
 	return args.Bool(0)
 }
 
+func (m *MockHelmService) GetValues(pkgName string, namespace string, context string) (map[string]interface{}, error) {
+	args := m.Called(pkgName, namespace, context)
+	values, _ := args.Get(0).(map[string]interface{})
+	return values, args.Error(1)
+}
+
 func (m *MockHelmService) PullChart(repositoryUrl string, chartName string, version string) (*models.HelmChart, error) {
 	args := m.Called(repositoryUrl, chartName, version)
 	chart, _ := args.Get(0).(*models.HelmChart)

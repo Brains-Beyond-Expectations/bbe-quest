@@ -284,7 +284,81 @@ func Test_upgradeCommand_Succeeds_WithoutPromptsWhenNonInteractive(t *testing.T)
 }
 
 func initUpgradeCommand() (*mocks.MockHelperService, *mocks.MockUiService, *mocks.MockConfigService, *mocks.MockPackageService, *mocks.MockHelmService, *mocks.MockTalosService, *mocks.MockPrerequisiteService) {
-	return newInstallMocks()
+	helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService := newInstallMocks()
+	// The packages run with the values bbe.yaml has, unless a test says otherwise
+	helmService.On("GetValues", mock.Anything, mock.Anything, mock.Anything).Return(map[string]interface{}(nil), nil)
+	return helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService
+}
+
+// A package at the library's version, with bbe.yaml giving it another NFS server than the one it runs with
+func mockChangedValues(configService *mocks.MockConfigService, helmService *mocks.MockHelmService) (map[string]interface{}, map[string]interface{}) {
+	deployed := map[string]interface{}{"nfs": map[string]interface{}{"server": "/volume1/bbe-media", "path": "/volume1/bbe-media"}}
+	wanted := map[string]interface{}{"nfs": map[string]interface{}{"server": "192.168.1.219", "path": "/volume1/bbe-media"}}
+	bbeConfig := &models.BbeConfig{}
+	bbeConfig.Bbe.Cluster.Name = "test"
+	bbeConfig.Bbe.Cluster.Context = "admin@test"
+	bbeConfig.Bbe.Packages = []models.LocalPackage{{Name: "package_one", Version: "2.0.0", Values: wanted}}
+	configService.On("GetBbeConfig", mock.Anything).Return(bbeConfig, nil)
+	helmService.ExpectedCalls = nil
+	helmService.On("GetValues", "package_one", "package_one", "admin@test").Return(deployed, nil)
+	return deployed, wanted
+}
+
+func Test_upgradeCommand_Succeeds_ApplyingChangedValues(t *testing.T) {
+	helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService := initUpgradeCommand()
+	_, wanted := mockChangedValues(configService, helmService)
+	uiService.On("CreateSelect", "Apply bbe.yaml's values to package package_one?", []string{"Yes", "No"}).Return("Yes", nil)
+	packageService.On("UpgradePackage", models.ChartEntry{Name: "package_one", Version: "2.0.0"}, wanted, true).Return(wanted, nil)
+
+	mockSuccessfulUpgradeFlow(helperService, uiService, configService, packageService)
+
+	err := upgradeCommand(helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService, false)
+
+	assert.Nil(t, err)
+	packageService.AssertCalled(t, "UpgradePackage", models.ChartEntry{Name: "package_one", Version: "2.0.0"}, wanted, true)
+	configService.AssertCalled(t, "UpdateBbePackages", mock.Anything, []models.LocalPackage{{Name: "package_one", Version: "2.0.0", Values: wanted}})
+}
+
+func Test_upgradeCommand_Succeeds_LeavingChangedValuesWhenDeclined(t *testing.T) {
+	helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService := initUpgradeCommand()
+	_, wanted := mockChangedValues(configService, helmService)
+	uiService.On("CreateSelect", mock.Anything, mock.Anything).Return("No", nil)
+
+	mockSuccessfulUpgradeFlow(helperService, uiService, configService, packageService)
+
+	err := upgradeCommand(helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService, false)
+
+	assert.Nil(t, err)
+	packageService.AssertNumberOfCalls(t, "UpgradePackage", 0)
+	configService.AssertCalled(t, "UpdateBbePackages", mock.Anything, []models.LocalPackage{{Name: "package_one", Version: "2.0.0", Values: wanted}})
+}
+
+func Test_upgradeCommand_Succeeds_ApplyingChangedValuesWithoutPromptsWhenNonInteractive(t *testing.T) {
+	helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService := initUpgradeCommand()
+	_, wanted := mockChangedValues(configService, helmService)
+	packageService.On("UpgradePackage", models.ChartEntry{Name: "package_one", Version: "2.0.0"}, wanted, false).Return(wanted, nil)
+
+	mockSuccessfulUpgradeFlow(helperService, uiService, configService, packageService)
+
+	err := upgradeCommand(helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService, true)
+
+	assert.Nil(t, err)
+	uiService.AssertNumberOfCalls(t, "CreateSelect", 0)
+	packageService.AssertCalled(t, "UpgradePackage", models.ChartEntry{Name: "package_one", Version: "2.0.0"}, wanted, false)
+}
+
+func Test_upgradeCommand_Fails_ReadingDeployedValues(t *testing.T) {
+	helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService := initUpgradeCommand()
+	mockChangedValues(configService, helmService)
+	helmService.ExpectedCalls = nil
+	helmService.On("GetValues", mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New("cluster unreachable"))
+
+	mockSuccessfulUpgradeFlow(helperService, uiService, configService, packageService)
+
+	err := upgradeCommand(helperService, uiService, configService, packageService, helmService, talosService, prerequisiteService, false)
+
+	assert.EqualError(t, err, "cluster unreachable")
+	packageService.AssertNumberOfCalls(t, "UpgradePackage", 0)
 }
 
 func mockSuccessfulUpgradeFlow(_ *mocks.MockHelperService, uiService *mocks.MockUiService, configService *mocks.MockConfigService, packageService *mocks.MockPackageService) {

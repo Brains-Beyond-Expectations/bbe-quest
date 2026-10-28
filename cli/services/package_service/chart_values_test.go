@@ -294,3 +294,49 @@ func Test_NormalizeValues_Succeeds_WithBbeYamlMaps(t *testing.T) {
 	assert.Equal(t, map[string]interface{}{"bbe": map[string]interface{}{"media": []interface{}{map[string]interface{}{"name": "a"}}}}, NormalizeValues(values))
 	assert.Nil(t, NormalizeValues(nil))
 }
+
+func Test_ValueChanges_Lists_Each_Changed_Value_With_Its_Path(t *testing.T) {
+	deployed := map[string]interface{}{
+		"bbe": map[string]interface{}{
+			"music": map[string]interface{}{
+				"nfs":       map[string]interface{}{"server": "/volume1/bbe-media", "path": "/volume1/bbe-media"},
+				"seedRatio": 2,
+			},
+		},
+	}
+	wanted := map[string]interface{}{
+		"bbe": map[string]interface{}{
+			"music": map[string]interface{}{
+				"nfs":       map[string]interface{}{"server": "192.168.1.219", "path": "/volume1/bbe-media"},
+				"seedRatio": 2,
+				"groups":    []interface{}{"ads", "adult"},
+			},
+		},
+	}
+
+	changes := ValueChanges(deployed, wanted)
+
+	assert.Equal(t, []string{
+		`bbe.music.groups: (unset) → ["ads","adult"]`,
+		`bbe.music.nfs.server: "/volume1/bbe-media" → "192.168.1.219"`,
+	}, changes)
+}
+
+func Test_ValueChanges_Finds_None_When_Only_Types_Or_Emptiness_Differ(t *testing.T) {
+	// helm reads numbers back as floats, and keeps empty lists and maps, where bbe.yaml may have none
+	deployed := map[string]interface{}{"ratio": float64(2), "clients": map[string]interface{}{}, "allowed": []interface{}{}}
+	wanted := map[string]interface{}{"ratio": 2, "clients": map[interface{}]interface{}{}}
+
+	assert.Empty(t, ValueChanges(deployed, wanted))
+	assert.Empty(t, ValueChanges(nil, map[string]interface{}{}))
+}
+
+func Test_ValueChanges_Lists_Removed_Values_And_Changed_Lists(t *testing.T) {
+	deployed := map[string]interface{}{"groups": []interface{}{"ads", "security"}, "queryLog": "console"}
+	wanted := map[string]interface{}{"groups": []interface{}{"ads"}}
+
+	assert.Equal(t, []string{
+		`groups: ["ads","security"] → ["ads"]`,
+		`queryLog: "console" → (unset)`,
+	}, ValueChanges(deployed, wanted))
+}

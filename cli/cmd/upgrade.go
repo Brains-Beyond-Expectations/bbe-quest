@@ -83,12 +83,18 @@ func upgradeCommand(helperService interfaces.HelperServiceInterface, uiService i
 		}
 	}()
 
-	// Go through our currently installed packages and see if a newer version is available
+	// Go through our currently installed packages and see if a newer version is available, or bbe.yaml changed their values
 	for i, installedPackage := range installedPackages {
-		logger.Info(fmt.Sprintf("Checking for newer version of package %s...", installedPackage.Name))
+		logger.Info(fmt.Sprintf("Checking package %s for a newer version, or values bbe.yaml changes...", installedPackage.Name))
 		for _, pkg := range allPackages {
 			if installedPackage.Name == pkg.Name {
-				if installedPackage.Version != pkg.Version {
+				if installedPackage.Version == pkg.Version {
+					values, err := applyChangedValues(pkg, installedPackage, *bbeConfig, packageService, helmService, uiService, uninteractive)
+					if err != nil {
+						return err
+					}
+					installedPackages[i].Values = values
+				} else {
 					upgrade := uninteractive
 					if !uninteractive {
 						result, err := uiService.CreateSelect(fmt.Sprintf("Package %s has newer version %s available. Do you want to upgrade?", pkg.Name, pkg.Version), []string{"Yes", "No"})
@@ -118,6 +124,39 @@ func upgradeCommand(helperService interfaces.HelperServiceInterface, uiService i
 	logger.Info("All packages checked")
 
 	return nil
+}
+
+// Upgrades a package to the same version when bbe.yaml changes the values it runs with, once its changes are shown and
+// agreed to. Returns the values bbe.yaml should keep
+func applyChangedValues(pkg models.ChartEntry, installedPackage models.LocalPackage, bbeConfig models.BbeConfig, packageService interfaces.PackageServiceInterface, helmService interfaces.HelmServiceInterface, uiService interfaces.UiServiceInterface, uninteractive bool) (map[string]interface{}, error) {
+	deployed, err := helmService.GetValues(installedPackage.Name, installedPackage.Name, bbeConfig.Bbe.Cluster.Context)
+	if err != nil {
+		return nil, err
+	}
+
+	changes := package_service.ValueChanges(deployed, installedPackage.Values)
+	if len(changes) == 0 {
+		return installedPackage.Values, nil
+	}
+
+	logger.Info(fmt.Sprintf("Package %s runs with other values than bbe.yaml's:", installedPackage.Name))
+	for _, change := range changes {
+		logger.Info("  " + change)
+	}
+
+	apply := uninteractive
+	if !uninteractive {
+		result, err := uiService.CreateSelect(fmt.Sprintf("Apply bbe.yaml's values to package %s?", installedPackage.Name), []string{"Yes", "No"})
+		if err != nil {
+			return nil, err
+		}
+		apply = result == "Yes"
+	}
+	if !apply {
+		return installedPackage.Values, nil
+	}
+
+	return packageService.UpgradePackage(pkg, installedPackage.Values, bbeConfig, helmService, uiService, !uninteractive)
 }
 
 func init() {
