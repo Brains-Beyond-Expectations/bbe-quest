@@ -385,7 +385,7 @@ func Test_setupCommand_Fails__WhenGettingDisksFails(t *testing.T) {
 func Test_setupCommand_Fails__WhenFailingToGenerateTalosConfig(t *testing.T) {
 	helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp := initSetupTests()
 
-	talosService.On("GenerateConfig", helperService, chosenIp, "talos-cluster", mock.Anything).Return(errors.New("test error"))
+	talosService.On("GenerateConfig", helperService, sharedIp, "talos-cluster", mock.Anything).Return(errors.New("test error"))
 
 	mockSuccessfulSetupFlow(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp, true)
 
@@ -400,22 +400,19 @@ func Test_setupCommand_Fails__WhenFailingToGenerateTalosConfig(t *testing.T) {
 	configService.AssertNumberOfCalls(t, "UpdateBbeClusterName", 0)
 }
 
-func Test_setupCommand_Fails__WhenFailingToGetControlPlaneIp(t *testing.T) {
+func Test_setupCommand_Fails__WhenFailingToFindTheControlPlanes(t *testing.T) {
 	helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp := initSetupTests()
 
-	talosService.On("GetControlPlaneIp", helperService, constants.ControlplaneConfigFile).Return("", errors.New("test error"))
+	uiService.On("CreateSelect", "Is this the first node in your cluster?", mock.Anything).Return("No", nil)
+	configService.On("CheckForTalosConfigs", helperService).Return(true)
+	talosService.On("GetTalosEndpoints", helperService).Return(nil, errors.New("test error"))
 
-	mockSuccessfulSetupFlow(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp, true)
+	mockSuccessfulSetupFlow(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp, false)
 
 	err := setupCommand(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService)
 
-	assert.NotNil(t, err)
-	helperService.AssertNumberOfCalls(t, "IsValidIp", 0)
-	imageService.AssertNumberOfCalls(t, "CreateImage", 1)
-	talosService.AssertNumberOfCalls(t, "GetDisks", 1)
-	configService.AssertNumberOfCalls(t, "GenerateBbeConfig", 0)
-	configService.AssertNumberOfCalls(t, "SyncConfigsWithAws", 0)
-	configService.AssertNumberOfCalls(t, "UpdateBbeClusterName", 0)
+	assert.ErrorContains(t, err, "control planes")
+	imageService.AssertNumberOfCalls(t, "CreateImage", 0)
 }
 
 func Test_setupCommand_Fails__WhenFailingToModifyNetworkNodeIp(t *testing.T) {
@@ -611,7 +608,7 @@ func Test_setupCommand_Fails__WhenFailingToJoinCluster(t *testing.T) {
 func Test_setupCommand_Fails__WhenFailingToBootstrapCluster(t *testing.T) {
 	helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp := initSetupTests()
 
-	talosService.On("BootstrapCluster", helperService, chosenIp, chosenIp).Return(errors.New("test error"))
+	talosService.On("BootstrapCluster", helperService, chosenIp).Return(errors.New("test error"))
 
 	mockSuccessfulSetupFlow(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp, true)
 
@@ -629,7 +626,7 @@ func Test_setupCommand_Fails__WhenFailingToBootstrapCluster(t *testing.T) {
 func Test_setupCommand_Fails__WhenFailingToVerifyNodeHealth(t *testing.T) {
 	helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp := initSetupTests()
 
-	talosService.On("VerifyNodeHealth", helperService, chosenIp, chosenIp).Return(errors.New("test error"))
+	talosService.On("VerifyNodeHealth", helperService, mock.Anything).Return(errors.New("test error"))
 
 	mockSuccessfulSetupFlow(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp, true)
 
@@ -647,7 +644,7 @@ func Test_setupCommand_Fails__WhenFailingToVerifyNodeHealth(t *testing.T) {
 func Test_setupCommand_Fails__WhenFailingToDownloadKubeConfig(t *testing.T) {
 	helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp := initSetupTests()
 
-	talosService.On("DownloadKubeConfig", helperService, chosenIp, chosenIp).Return(errors.New("test error"))
+	talosService.On("DownloadKubeConfig", helperService, mock.Anything).Return(errors.New("test error"))
 
 	mockSuccessfulSetupFlow(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp, true)
 
@@ -738,6 +735,10 @@ func Test_diskLabel_OmitsMissingDetails(t *testing.T) {
 	assert.Equal(t, "/dev/mmcblk0 - 32 GB", diskLabel(disk))
 }
 
+// The address the control planes share for the Kubernetes API, and the control plane a cluster already has
+const sharedIp = "5.6.7.250"
+const firstControlPlaneIp = "5.6.7.1"
+
 func initSetupTests() (*mocks.MockHelperService, *mocks.MockDependencyService, *mocks.MockTalosService, *mocks.MockIpFinderService, *mocks.MockUiService, *mocks.MockConfigService, *mocks.MockImageService, string, string, string) {
 	helperService := mocks.MockHelperService{}
 	dependencyService := mocks.MockDependencyService{}
@@ -780,15 +781,20 @@ func mockSuccessfulSetupFlow(helperService *mocks.MockHelperService, dependencyS
 	uiService.On("CreateInput", mock.MatchedBy(startsWith("Please choose the DNS server")), gatewayIp).Return(gatewayIp, nil)
 	uiService.On("CreateInput", mock.MatchedBy(startsWith("Please select the hostname")), mock.Anything).Return("talos-node", nil)
 	uiService.On("CreateInput", "Please enter what you want to name your cluster", mock.Anything).Return("talos-cluster", nil)
+	uiService.On("CreateInput", mock.MatchedBy(startsWith("Which address should the control planes share for the Kubernetes API?")), "").Return(sharedIp, nil)
+	uiService.On("CreateSelect", joinAsQuestion, mock.Anything).Return(joinAsWorker, nil)
 	uiService.On("CreateSelect", "Do you want to allow scheduling on the control plane? This is required if you have only one node.", mock.Anything).Return("Yes", nil)
-	talosService.On("GenerateConfig", helperService, chosenIp, "talos-cluster", mock.Anything).Return(nil)
+	talosService.On("GenerateConfig", helperService, sharedIp, "talos-cluster", mock.Anything).Return(nil)
 	ipFinderService.On("GetLocalIp", chosenIp).Return("5.6.7.100", nil)
 	helperService.On("IsWsl").Return(false)
 	uiService.On("CreateInput", mock.MatchedBy(startsWith("Which networks may reach the Talos and Kubernetes APIs?")), "5.6.7.0/24").Return("5.6.7.0/24", nil)
 	talosService.On("ModifyNetworkPolicies", helperService).Return(nil)
 	talosService.On("ModifyControlPlaneMetrics", helperService).Return(nil)
 	talosService.On("ModifyFirewall", helperService, mock.Anything, mock.Anything).Return(nil)
-	talosService.On("GetControlPlaneIp", helperService, constants.ControlplaneConfigFile).Return(chosenIp, nil)
+	talosService.On("GetTalosEndpoints", helperService).Return([]string{firstControlPlaneIp}, nil)
+	talosService.On("GetSharedIp", helperService).Return(sharedIp, nil)
+	talosService.On("ModifySharedIp", helperService, sharedIp, "eth0").Return(nil)
+	talosService.On("SetTalosEndpoints", helperService, mock.Anything).Return(nil)
 	talosService.On("ModifyNetworkNodeIp", helperService, nodeTypeConfigFile, chosenIp).Return(nil)
 	talosService.On("GetNetworkInterface", helperService, nodeIp).Return("eth0", nil)
 	talosService.On("ModifyNetworkInterface", helperService, nodeTypeConfigFile, "eth0").Return(nil)
@@ -802,9 +808,9 @@ func mockSuccessfulSetupFlow(helperService *mocks.MockHelperService, dependencyS
 	talosService.On("WarnIfTalosVersionMismatch", mock.Anything).Return()
 	talosService.On("ModifyInstallerImage", helperService, mock.Anything, mock.Anything).Return(nil)
 	talosService.On("JoinCluster", helperService, nodeIp, nodeTypeConfigFile).Return(nil)
-	talosService.On("BootstrapCluster", helperService, chosenIp, chosenIp).Return(nil)
-	talosService.On("VerifyNodeHealth", helperService, chosenIp, chosenIp).Return(nil)
-	talosService.On("DownloadKubeConfig", helperService, chosenIp, chosenIp).Return(nil)
+	talosService.On("BootstrapCluster", helperService, chosenIp).Return(nil)
+	talosService.On("VerifyNodeHealth", helperService, mock.Anything).Return(nil)
+	talosService.On("DownloadKubeConfig", helperService, mock.Anything).Return(nil)
 	configService.On("UpdateBbeClusterName", helperService, "talos-cluster").Return(nil)
 }
 
@@ -951,4 +957,301 @@ func Test_parseTrustedNetworks_Succeeds_WithoutThisComputer_InWsl(t *testing.T) 
 
 	assert.Equal(t, "", problem)
 	assert.Equal(t, []string{"192.168.1.0/24"}, networks)
+}
+
+// Answers bbe setup as for a node joining an existing cluster as a control plane
+func mockJoiningAsControlPlane(helperService *mocks.MockHelperService, uiService *mocks.MockUiService, configService *mocks.MockConfigService) {
+	uiService.On("CreateSelect", "Is this the first node in your cluster?", mock.Anything).Return("No", nil)
+	configService.On("CheckForTalosConfigs", helperService).Return(true)
+	uiService.On("CreateSelect", joinAsQuestion, mock.Anything).Return(joinAsControlPlane, nil)
+}
+
+func callsOf(talosService *mocks.MockTalosService, method string) [][]interface{} {
+	var calls [][]interface{}
+	for _, call := range talosService.Calls {
+		if call.Method == method {
+			calls = append(calls, call.Arguments)
+		}
+	}
+	return calls
+}
+
+func Test_setupCommand_Succeeds_WithControlPlane_SharingAnAddressForTheKubernetesApi(t *testing.T) {
+	helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp := initSetupTests()
+
+	mockSuccessfulSetupFlow(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp, true)
+
+	err := setupCommand(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService)
+
+	assert.Nil(t, err)
+	talosService.AssertCalled(t, "GenerateConfig", helperService, sharedIp, "talos-cluster", mock.Anything)
+	talosService.AssertCalled(t, "ModifySharedIp", helperService, sharedIp, "eth0")
+	talosService.AssertCalled(t, "BootstrapCluster", helperService, chosenIp)
+	talosService.AssertCalled(t, "SetTalosEndpoints", helperService, []string{chosenIp})
+	talosService.AssertCalled(t, "VerifyNodeHealth", helperService, []string{chosenIp})
+	talosService.AssertCalled(t, "DownloadKubeConfig", helperService, []string{chosenIp})
+	talosService.AssertNotCalled(t, "GetTalosEndpoints", mock.Anything)
+	talosService.AssertNotCalled(t, "GetSharedIp", mock.Anything)
+	uiService.AssertNotCalled(t, "CreateSelect", joinAsQuestion, mock.Anything)
+}
+
+func Test_setupCommand_Succeeds_AskingAgain_WhenTheSharedAddressIsTheNodes(t *testing.T) {
+	helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp := initSetupTests()
+
+	uiService.On("CreateInput", mock.MatchedBy(startsWith("Which address should the control planes share for the Kubernetes API?")), "").Return(chosenIp, nil)
+	uiService.On("CreateInput", "5.6.7.8 is already a node's or the gateway's address. Please enter the shared address again:", "").Return(sharedIp, nil)
+
+	mockSuccessfulSetupFlow(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp, true)
+
+	err := setupCommand(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService)
+
+	assert.Nil(t, err)
+	talosService.AssertCalled(t, "GenerateConfig", helperService, sharedIp, "talos-cluster", mock.Anything)
+}
+
+func Test_setupCommand_Fails_WhenFailingToModifySharedIp(t *testing.T) {
+	helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp := initSetupTests()
+
+	talosService.On("ModifySharedIp", helperService, sharedIp, "eth0").Return(errors.New("test error"))
+
+	mockSuccessfulSetupFlow(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp, true)
+
+	err := setupCommand(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService)
+
+	assert.ErrorContains(t, err, "shared address")
+	talosService.AssertNumberOfCalls(t, "JoinCluster", 0)
+}
+
+func Test_setupCommand_Fails_WhenFailingToRecordTheControlPlanes(t *testing.T) {
+	helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp := initSetupTests()
+
+	talosService.On("SetTalosEndpoints", helperService, mock.Anything).Return(errors.New("test error"))
+
+	mockSuccessfulSetupFlow(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp, true)
+
+	err := setupCommand(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService)
+
+	assert.ErrorContains(t, err, "talosconfig")
+	talosService.AssertNumberOfCalls(t, "VerifyNodeHealth", 0)
+}
+
+func Test_setupCommand_Succeeds_WithWorkerNode_CheckingHealthThroughTheControlPlanes(t *testing.T) {
+	helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp := initSetupTests()
+
+	uiService.On("CreateSelect", "Is this the first node in your cluster?", mock.Anything).Return("No", nil)
+	configService.On("CheckForTalosConfigs", helperService).Return(true)
+
+	mockSuccessfulSetupFlow(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp, false)
+
+	err := setupCommand(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService)
+
+	assert.Nil(t, err)
+	talosService.AssertCalled(t, "JoinCluster", helperService, nodeIp, constants.WorkerConfigFile)
+	talosService.AssertCalled(t, "VerifyNodeHealth", helperService, []string{firstControlPlaneIp})
+	talosService.AssertNotCalled(t, "GetSharedIp", mock.Anything)
+	talosService.AssertNotCalled(t, "ModifySharedIp", mock.Anything, mock.Anything, mock.Anything)
+	talosService.AssertNotCalled(t, "SetTalosEndpoints", mock.Anything, mock.Anything)
+	talosService.AssertNotCalled(t, "BootstrapCluster", mock.Anything, mock.Anything)
+	uiService.AssertNotCalled(t, "CreateSelect", "Do you want to allow scheduling on the control plane? This is required if you have only one node.", mock.Anything)
+}
+
+func Test_setupCommand_Succeeds_WithAnotherControlPlane_JoiningWithoutBootstrapping(t *testing.T) {
+	helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp := initSetupTests()
+
+	mockJoiningAsControlPlane(helperService, uiService, configService)
+
+	mockSuccessfulSetupFlow(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp, true)
+
+	err := setupCommand(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService)
+
+	assert.Nil(t, err)
+	talosService.AssertCalled(t, "JoinCluster", helperService, nodeIp, constants.ControlplaneConfigFile)
+	talosService.AssertCalled(t, "ModifySharedIp", helperService, sharedIp, "eth0")
+	talosService.AssertCalled(t, "ModifySchedulingOnControlPlane", helperService, true)
+	talosService.AssertCalled(t, "SetTalosEndpoints", helperService, []string{firstControlPlaneIp, chosenIp})
+	talosService.AssertCalled(t, "VerifyNodeHealth", helperService, []string{firstControlPlaneIp, chosenIp})
+	talosService.AssertNotCalled(t, "GenerateConfig", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	talosService.AssertNotCalled(t, "BootstrapCluster", mock.Anything, mock.Anything)
+	talosService.AssertNotCalled(t, "DownloadKubeConfig", mock.Anything, mock.Anything)
+	talosService.AssertNotCalled(t, "ModifyFirewall", mock.Anything, mock.Anything, mock.Anything)
+	talosService.AssertNotCalled(t, "GetControlPlaneIp", mock.Anything, mock.Anything)
+	configService.AssertNotCalled(t, "UpdateBbeClusterName", mock.Anything, mock.Anything)
+}
+
+func Test_setupCommand_Succeeds_WithAnotherControlPlane_RecordingItOnce_WhenSetUpAgain(t *testing.T) {
+	helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp := initSetupTests()
+
+	mockJoiningAsControlPlane(helperService, uiService, configService)
+	talosService.On("GetTalosEndpoints", helperService).Return([]string{firstControlPlaneIp, chosenIp}, nil)
+
+	mockSuccessfulSetupFlow(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp, true)
+
+	err := setupCommand(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService)
+
+	assert.Nil(t, err)
+	talosService.AssertCalled(t, "SetTalosEndpoints", helperService, []string{firstControlPlaneIp, chosenIp})
+}
+
+func Test_setupCommand_Succeeds_WithAnotherControlPlane_KeepingASingleAddress_WhenTheMoveIsDeclined(t *testing.T) {
+	helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp := initSetupTests()
+
+	mockJoiningAsControlPlane(helperService, uiService, configService)
+	talosService.On("GetSharedIp", helperService).Return("", nil)
+	talosService.On("GetControlPlaneIp", helperService, constants.ControlplaneConfigFile).Return(firstControlPlaneIp, nil)
+	uiService.On("CreateSelect", mock.MatchedBy(startsWith("The cluster's Kubernetes API is at 5.6.7.1, a single control plane's address")), []string{"Yes", "No"}).Return("No", nil)
+
+	mockSuccessfulSetupFlow(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp, true)
+
+	err := setupCommand(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService)
+
+	assert.Nil(t, err)
+	talosService.AssertCalled(t, "JoinCluster", helperService, nodeIp, constants.ControlplaneConfigFile)
+	talosService.AssertCalled(t, "SetTalosEndpoints", helperService, []string{firstControlPlaneIp, chosenIp})
+	talosService.AssertNotCalled(t, "GetMembers", mock.Anything, mock.Anything)
+	talosService.AssertNotCalled(t, "MoveNodeToSharedIp", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	talosService.AssertNotCalled(t, "ModifySharedIp", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// Answers bbe setup as for a control plane joining a cluster from an earlier bbe, with one control plane and one
+// worker, which is moved to a shared address
+func mockMovingToASharedAddress(helperService *mocks.MockHelperService, talosService *mocks.MockTalosService, uiService *mocks.MockUiService, configService *mocks.MockConfigService) {
+	mockJoiningAsControlPlane(helperService, uiService, configService)
+	talosService.On("GetSharedIp", helperService).Return("", nil)
+	talosService.On("GetControlPlaneIp", helperService, constants.ControlplaneConfigFile).Return(firstControlPlaneIp, nil)
+	uiService.On("CreateSelect", mock.MatchedBy(startsWith("The cluster's Kubernetes API is at 5.6.7.1, a single control plane's address")), []string{"Yes", "No"}).Return("Yes", nil)
+
+	controlPlane := models.TalosMember{}
+	controlPlane.Spec.Addresses = []string{firstControlPlaneIp}
+	controlPlane.Spec.MachineType = models.TalosControlPlaneMachineType
+	worker := models.TalosMember{}
+	worker.Spec.Addresses = []string{"5.6.7.2"}
+	worker.Spec.MachineType = "worker"
+	talosService.On("GetMembers", helperService, []string{firstControlPlaneIp}).Return([]models.TalosMember{controlPlane, worker}, nil)
+	talosService.On("GetNodeNetworkInterface", helperService, []string{firstControlPlaneIp}, firstControlPlaneIp).Return("enp1s0", nil)
+	talosService.On("MoveNodeToSharedIp", helperService, []string{firstControlPlaneIp}, mock.Anything, sharedIp, mock.Anything).Return(nil)
+	talosService.On("ModifyClusterEndpoint", helperService, mock.Anything, sharedIp).Return(nil)
+	talosService.On("ModifySharedIp", helperService, sharedIp, "enp1s0").Return(nil)
+}
+
+func Test_setupCommand_Succeeds_WithAnotherControlPlane_MovingTheClusterToASharedAddress(t *testing.T) {
+	helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp := initSetupTests()
+
+	mockMovingToASharedAddress(helperService, talosService, uiService, configService)
+
+	mockSuccessfulSetupFlow(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp, true)
+
+	err := setupCommand(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService)
+
+	assert.Nil(t, err)
+	// The control plane holds the address before the worker is pointed at it
+	assert.Equal(t, [][]interface{}{
+		{helperService, []string{firstControlPlaneIp}, firstControlPlaneIp, sharedIp, "enp1s0"},
+		{helperService, []string{firstControlPlaneIp}, "5.6.7.2", sharedIp, ""},
+	}, callsOf(talosService, "MoveNodeToSharedIp"))
+	talosService.AssertCalled(t, "ModifyClusterEndpoint", helperService, constants.ControlplaneConfigFile, sharedIp)
+	talosService.AssertCalled(t, "ModifyClusterEndpoint", helperService, constants.WorkerConfigFile, sharedIp)
+	talosService.AssertCalled(t, "DownloadKubeConfig", helperService, []string{firstControlPlaneIp})
+	// The configs record the address right away, and the new control plane holds it too, on its own network interface
+	assert.Equal(t, [][]interface{}{
+		{helperService, sharedIp, "enp1s0"},
+		{helperService, sharedIp, "eth0"},
+	}, callsOf(talosService, "ModifySharedIp"))
+	assert.Equal(t, [][]interface{}{
+		{helperService, []string{firstControlPlaneIp}},
+		{helperService, []string{firstControlPlaneIp, chosenIp}},
+	}, callsOf(talosService, "SetTalosEndpoints"))
+	// The shared address isn't taken by a node
+	uiService.AssertCalled(t, "CreateInput", mock.MatchedBy(startsWith("Which address should the control planes share for the Kubernetes API? Another control plane takes it over when one goes down. Pick a free one in 5.6.7.0/24")), "")
+}
+
+func Test_setupCommand_Succeeds_MovingTheClusterToASharedAddress_WhenAWorkerCannotBeMoved(t *testing.T) {
+	helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp := initSetupTests()
+
+	talosService.On("MoveNodeToSharedIp", helperService, mock.Anything, "5.6.7.2", sharedIp, "").Return(errors.New("test error"))
+	mockMovingToASharedAddress(helperService, talosService, uiService, configService)
+
+	mockSuccessfulSetupFlow(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp, true)
+
+	err := setupCommand(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService)
+
+	assert.Nil(t, err)
+	talosService.AssertCalled(t, "ModifyClusterEndpoint", helperService, constants.WorkerConfigFile, sharedIp)
+}
+
+func Test_setupCommand_Fails_MovingTheClusterToASharedAddress_WhenAControlPlaneCannotBeMoved(t *testing.T) {
+	helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp := initSetupTests()
+
+	talosService.On("MoveNodeToSharedIp", helperService, mock.Anything, firstControlPlaneIp, sharedIp, "enp1s0").Return(errors.New("test error"))
+	mockMovingToASharedAddress(helperService, talosService, uiService, configService)
+
+	mockSuccessfulSetupFlow(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp, true)
+
+	err := setupCommand(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService)
+
+	assert.ErrorContains(t, err, "Error while moving control plane 5.6.7.1 to 5.6.7.250")
+	assert.Len(t, callsOf(talosService, "MoveNodeToSharedIp"), 1)
+	talosService.AssertNotCalled(t, "ModifyClusterEndpoint", mock.Anything, mock.Anything, mock.Anything)
+	talosService.AssertNotCalled(t, "SetTalosEndpoints", mock.Anything, mock.Anything)
+	imageService.AssertNumberOfCalls(t, "CreateImage", 0)
+}
+
+func Test_setupCommand_Fails_MovingTheClusterToASharedAddress_WhenTheNodesCannotBeListed(t *testing.T) {
+	helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp := initSetupTests()
+
+	talosService.On("GetMembers", helperService, mock.Anything).Return(nil, errors.New("test error"))
+	mockMovingToASharedAddress(helperService, talosService, uiService, configService)
+
+	mockSuccessfulSetupFlow(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp, true)
+
+	err := setupCommand(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService)
+
+	assert.ErrorContains(t, err, "listing the cluster's nodes")
+	talosService.AssertNotCalled(t, "MoveNodeToSharedIp", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+func Test_setupCommand_Fails_MovingTheClusterToASharedAddress_WhenItsHealthCheckFails(t *testing.T) {
+	helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp := initSetupTests()
+
+	talosService.On("VerifyNodeHealth", helperService, []string{firstControlPlaneIp}).Return(errors.New("test error"))
+	mockMovingToASharedAddress(helperService, talosService, uiService, configService)
+
+	mockSuccessfulSetupFlow(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService, gatewayIp, nodeIp, chosenIp, true)
+
+	err := setupCommand(helperService, dependencyService, talosService, ipFinderService, uiService, configService, imageService)
+
+	assert.ErrorContains(t, err, "health on the shared address")
+	talosService.AssertNotCalled(t, "DownloadKubeConfig", mock.Anything, mock.Anything)
+}
+
+func Test_parseSharedIp_Succeeds_WithAFreeAddressInTheNodesNetwork(t *testing.T) {
+	sharedIp, problem := parseSharedIp(" 192.168.1.250 ", netip.MustParseAddr("192.168.1.161"), []string{"192.168.1.161", "192.168.1.1"})
+
+	assert.Equal(t, "", problem)
+	assert.Equal(t, "192.168.1.250", sharedIp)
+}
+
+func Test_parseSharedIp_Fails_WithSomethingElseThanAnAddress(t *testing.T) {
+	_, problem := parseSharedIp("192.168.1.0/24", netip.MustParseAddr("192.168.1.161"), nil)
+
+	assert.Equal(t, `"192.168.1.0/24" isn't an address such as 192.168.1.250`, problem)
+}
+
+func Test_parseSharedIp_Fails_OutsideTheNodesNetwork(t *testing.T) {
+	_, problem := parseSharedIp("192.168.2.250", netip.MustParseAddr("192.168.1.161"), nil)
+
+	assert.Equal(t, "192.168.2.250 isn't in the node's network, 192.168.1.0/24", problem)
+}
+
+func Test_parseSharedIp_Fails_WithTheNetworksOwnOrBroadcastAddress(t *testing.T) {
+	for _, address := range []string{"192.168.1.0", "192.168.1.255"} {
+		_, problem := parseSharedIp(address, netip.MustParseAddr("192.168.1.161"), nil)
+
+		assert.Equal(t, address+" is the network's own address or its broadcast address", problem)
+	}
+}
+
+func Test_parseSharedIp_Fails_WithATakenAddress(t *testing.T) {
+	_, problem := parseSharedIp("192.168.1.1", netip.MustParseAddr("192.168.1.161"), []string{"192.168.1.161", "192.168.1.1"})
+
+	assert.Equal(t, "192.168.1.1 is already a node's or the gateway's address", problem)
 }

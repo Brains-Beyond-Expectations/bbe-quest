@@ -43,7 +43,7 @@ packages, making your devices find and trust the apps, adding your household, an
 
 | Command | What it does |
 |---|---|
-| `bbe setup` | Installs Talos on a node, and creates the cluster or adds the node to it |
+| `bbe setup` | Installs Talos on a node, and creates the cluster or adds the node to it, as a worker or a control plane |
 | `bbe install` | Installs packages, and what they need first |
 | `bbe upgrade` | Upgrades the installed packages |
 | `bbe configure <package>` | Adds to and removes from a package's settings, such as the people in bbe-auth or the indexers in bbe-media |
@@ -51,6 +51,22 @@ packages, making your devices find and trust the apps, adding your household, an
 
 Everything bbe installs, and its settings, is kept in `~/.bbe/bbe.yaml`, which sets up the same packages on a new
 cluster.
+
+### Keeping the cluster up when a node goes down
+
+A cluster keeps working while one of its control planes is down if it has three of them. etcd, which keeps the
+cluster's state, needs more than half of its members running, so two control planes survive no more than one does.
+When `bbe setup` adds a node to a cluster, it asks whether the node should run the control plane too, or only be a
+worker.
+
+- **A shared address for the Kubernetes API**: when it creates a cluster, `bbe setup` asks for a free address in the
+  node's network, outside the range your router hands out. The control planes share it: one of them holds it, and
+  another takes it over when that one goes down. The nodes, `kubectl` and bbe reach the Kubernetes API there.
+- **talosctl reaches each control plane at its own address**, which bbe records in `~/.bbe/talosconfig` as control
+  planes join. The shared address only answers while etcd is healthy, so it's no use for repairing the cluster.
+- **A cluster created by an earlier bbe** reaches the Kubernetes API at its first control plane's own address. When a
+  control plane joins it, `bbe setup` offers to move it to a shared address: it points every node at the new address,
+  without restarting them, has the control planes hold it, and updates `kubectl`'s config.
 
 ### What `bbe setup` locks down
 

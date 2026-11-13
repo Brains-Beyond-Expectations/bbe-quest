@@ -502,7 +502,8 @@ func kubectl(cluster models.ClusterAccess, args ...string) ([]byte, error) {
 }
 
 func talosctl(node node, cluster models.ClusterAccess, args ...string) ([]byte, error) {
-	cmd := execCommand("talosctl", append(args, "--nodes", node.ip, "--endpoints", cluster.ControlPlaneIp, "--talosconfig", cluster.TalosConfig)...)
+	// With several control planes, talosctl reaches the node through any of them, so upgrading one doesn't cut bbe off
+	cmd := execCommand("talosctl", append(args, "--nodes", node.ip, "--endpoints", strings.Join(cluster.TalosEndpoints, ","), "--talosconfig", cluster.TalosConfig)...)
 	logger.Debug(fmt.Sprintf("Command: %s", cmd.String()))
 
 	response, err := command.Output(cmd)

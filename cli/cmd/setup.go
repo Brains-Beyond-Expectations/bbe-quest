@@ -83,16 +83,41 @@ func setupCommand(helperService interfaces.HelperServiceInterface, dependencySer
 	if err != nil {
 		panic(err)
 	}
-	createControlPlane := answer == "Yes"
+	createCluster := answer == "Yes"
 
 	configExists := configService.CheckForTalosConfigs(helperService)
 
-	if createControlPlane && configExists {
+	if createCluster && configExists {
 		return fmt.Errorf("You are trying to create a control plane node, but there are already config files present, in %s", helperService.GetConfigDir())
 	}
 
-	if !configExists && !createControlPlane {
+	if !configExists && !createCluster {
 		return fmt.Errorf("No config files found while trying to enroll new node in existing cluster, please create your first node first")
+	}
+
+	controlPlane := createCluster
+	// The control planes' own addresses, which talosctl reaches the cluster through
+	var talosEndpoints []string
+	// The address the control planes share for the Kubernetes API, which moves to another one when one goes down
+	var sharedIp string
+	if !createCluster {
+		answer, err = uiService.CreateSelect(joinAsQuestion, []string{joinAsWorker, joinAsControlPlane})
+		if err != nil {
+			panic(err)
+		}
+		controlPlane = answer == joinAsControlPlane
+
+		talosEndpoints, err = talosService.GetTalosEndpoints(helperService)
+		if err != nil {
+			return fmt.Errorf("Error while finding the cluster's control planes: %w", err)
+		}
+
+		if controlPlane {
+			sharedIp, talosEndpoints, err = offerSharedIp(helperService, talosService, uiService, talosEndpoints)
+			if err != nil {
+				return err
+			}
+		}
 	}
 
 	answer, err = uiService.CreateSelect("What type of device are you setting up?", []string{"Bare Metal", "Single Board Computer"})
@@ -226,29 +251,37 @@ func setupCommand(helperService interfaces.HelperServiceInterface, dependencySer
 	var clusterName string
 	var allowSchedulingOnControlPlanes string
 	var trustedNetworks []string
-	if createControlPlane {
-		if !configExists {
-			suggestedClusterName := "big_brain_entropy_holder"
-			if rngError == nil {
-				suggestedClusterName = codename.Generate(rng, 0)
-			}
-
-			clusterName, err = uiService.CreateInput("Please enter what you want to name your cluster", suggestedClusterName)
-			if err != nil {
-				panic(err)
-			}
-
-			err = talosService.GenerateConfig(helperService, chosenIp, clusterName, nodeType.TalosVersion)
-			if err != nil {
-				return fmt.Errorf("Error while generating config: %w", err)
-			}
-
-			trustedNetworks, err = askTrustedNetworks(helperService, ipFinderService, uiService, chosenIp)
-			if err != nil {
-				return fmt.Errorf("Error while asking for the trusted networks: %w", err)
-			}
+	if createCluster {
+		suggestedClusterName := "big_brain_entropy_holder"
+		if rngError == nil {
+			suggestedClusterName = codename.Generate(rng, 0)
 		}
 
+		clusterName, err = uiService.CreateInput("Please enter what you want to name your cluster", suggestedClusterName)
+		if err != nil {
+			panic(err)
+		}
+
+		sharedIp, err = askSharedIp(uiService, chosenIp, []string{chosenIp, gatewayIp})
+		if err != nil {
+			return fmt.Errorf("Error while asking for the control planes' shared address: %w", err)
+		}
+
+		// The nodes reach the Kubernetes API at the shared address, so they keep reaching it when a control plane is down
+		err = talosService.GenerateConfig(helperService, sharedIp, clusterName, nodeType.TalosVersion)
+		if err != nil {
+			return fmt.Errorf("Error while generating config: %w", err)
+		}
+
+		trustedNetworks, err = askTrustedNetworks(helperService, ipFinderService, uiService, chosenIp)
+		if err != nil {
+			return fmt.Errorf("Error while asking for the trusted networks: %w", err)
+		}
+
+		talosEndpoints = []string{chosenIp}
+	}
+
+	if controlPlane {
 		allowSchedulingOnControlPlanes, err = uiService.CreateSelect("Do you want to allow scheduling on the control plane? This is required if you have only one node.", []string{"Yes", "No"})
 		if err != nil {
 			panic(err)
@@ -257,11 +290,7 @@ func setupCommand(helperService interfaces.HelperServiceInterface, dependencySer
 	}
 	///////////////////////////////////////////////////////////////////////////////// QUESTIONS END ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-	controlPlaneIp, err := talosService.GetControlPlaneIp(helperService, constants.ControlplaneConfigFile)
-	if err != nil {
-		return fmt.Errorf("Error while getting control plane IP: %w", err)
-	}
-	logger.Debug(fmt.Sprintf("Control plane IP: %s", controlPlaneIp))
+	logger.Debug(fmt.Sprintf("Control planes: %s", strings.Join(talosEndpoints, ", ")))
 
 	logger.Debug("Checking if talosctl matches the version the node image was built for")
 	talosService.WarnIfTalosVersionMismatch(nodeType.TalosVersion)
@@ -288,7 +317,7 @@ func setupCommand(helperService interfaces.HelperServiceInterface, dependencySer
 	}
 
 	nodeConfigFile := constants.WorkerConfigFile
-	if createControlPlane {
+	if controlPlane {
 		nodeConfigFile = constants.ControlplaneConfigFile
 	}
 
@@ -307,6 +336,13 @@ func setupCommand(helperService interfaces.HelperServiceInterface, dependencySer
 	err = talosService.ModifyNetworkInterface(helperService, nodeConfigFile, networkInterface)
 	if err != nil {
 		return fmt.Errorf("Error while storing the network interface in file: %w", err)
+	}
+
+	if controlPlane && sharedIp != "" {
+		err = talosService.ModifySharedIp(helperService, sharedIp, networkInterface)
+		if err != nil {
+			return fmt.Errorf("Error while storing the control planes' shared address in file: %w", err)
+		}
 	}
 
 	err = talosService.ModifyNetworkGateway(helperService, nodeConfigFile, gatewayIp)
@@ -361,8 +397,8 @@ func setupCommand(helperService interfaces.HelperServiceInterface, dependencySer
 		return fmt.Errorf("Error while joining cluster: %w", err)
 	}
 
-	if createControlPlane {
-		err := talosService.BootstrapCluster(helperService, chosenIp, controlPlaneIp)
+	if createCluster {
+		err := talosService.BootstrapCluster(helperService, chosenIp)
 		if err != nil {
 			return fmt.Errorf("Error while bootstrapping cluster: %w", err)
 		}
@@ -370,14 +406,26 @@ func setupCommand(helperService interfaces.HelperServiceInterface, dependencySer
 		logger.Infof("Cluster bootstrapping successfully requested at %s", chosenIp)
 	}
 
-	err = talosService.VerifyNodeHealth(helperService, chosenIp, controlPlaneIp)
+	if controlPlane {
+		if !slices.Contains(talosEndpoints, chosenIp) {
+			talosEndpoints = append(talosEndpoints, chosenIp)
+		}
+
+		err = talosService.SetTalosEndpoints(helperService, talosEndpoints)
+		if err != nil {
+			return fmt.Errorf("Error while recording the control planes in talosconfig: %w", err)
+		}
+	}
+
+	err = talosService.VerifyNodeHealth(helperService, talosEndpoints)
 	if err != nil {
 		return fmt.Errorf("Error while verifying node health: %w", err)
 	}
 
-	if createControlPlane {
+	switch {
+	case createCluster:
 		logger.Debug("Downloading kube config")
-		err := talosService.DownloadKubeConfig(helperService, chosenIp, controlPlaneIp)
+		err := talosService.DownloadKubeConfig(helperService, talosEndpoints)
 		if err != nil {
 			return fmt.Errorf("Error while downloading kubeconfig: %w", err)
 		}
@@ -388,13 +436,181 @@ func setupCommand(helperService interfaces.HelperServiceInterface, dependencySer
 			return fmt.Errorf("Error while updating BBE cluster name: %w", err)
 		}
 
+		logger.Infof("Control plane node %s successfully set up, with the Kubernetes API at %s", chosenIp, sharedIp)
+	case controlPlane:
 		logger.Infof("Control plane node %s successfully set up", chosenIp)
-	} else {
+	default:
 		logger.Infof("Worker node %s successfully set up", chosenIp)
 	}
 	spinner.Stop()
 
+	if controlPlane && len(talosEndpoints)%2 == 0 {
+		logger.Warning(fmt.Sprintf("The cluster has %d control planes. etcd needs more than half of them running, so it survives no more control planes going down than with %d. Add another to make the most of them", len(talosEndpoints), len(talosEndpoints)-1))
+	}
+
 	return nil
+}
+
+const joinAsQuestion = "Should this node run the control plane too? With three control planes, the cluster keeps working when one of them goes down"
+const joinAsWorker = "No, it's a worker"
+const joinAsControlPlane = "Yes, it's a control plane"
+
+// Asks for the address the control planes share for the Kubernetes API, which has to be in nodeIp's network and
+// not taken yet
+func askSharedIp(uiService interfaces.UiServiceInterface, nodeIp string, taken []string) (string, error) {
+	nodeAddress, err := netip.ParseAddr(nodeIp)
+	if err != nil {
+		return "", err
+	}
+
+	title := fmt.Sprintf("Which address should the control planes share for the Kubernetes API? Another control plane takes it over when one goes down. Pick a free one in %s that your router doesn't hand out", netip.PrefixFrom(nodeAddress, 24).Masked())
+	for {
+		answer, err := uiService.CreateInput(title, "")
+		if err != nil {
+			panic(err)
+		}
+
+		sharedIp, problem := parseSharedIp(answer, nodeAddress, taken)
+		if problem == "" {
+			return sharedIp, nil
+		}
+
+		title = fmt.Sprintf("%s. Please enter the shared address again:", problem)
+	}
+}
+
+// Reads an address such as "192.168.1.250", or says what's wrong with it. Control planes hold it on the link they
+// have their own address on, which bbe sets up as a /24
+func parseSharedIp(answer string, nodeAddress netip.Addr, taken []string) (string, string) {
+	answer = strings.TrimSpace(answer)
+	address, err := netip.ParseAddr(answer)
+	if err != nil {
+		return "", fmt.Sprintf("%q isn't an address such as 192.168.1.250", answer)
+	}
+
+	network := netip.PrefixFrom(nodeAddress, 24).Masked()
+	if !network.Contains(address) {
+		return "", fmt.Sprintf("%s isn't in the node's network, %s", address, network)
+	}
+
+	if address == network.Addr() || !network.Contains(address.Next()) {
+		return "", fmt.Sprintf("%s is the network's own address or its broadcast address", address)
+	}
+
+	if slices.Contains(taken, address.String()) {
+		return "", fmt.Sprintf("%s is already a node's or the gateway's address", address)
+	}
+
+	return address.String(), ""
+}
+
+// Offers to move a cluster created by an earlier bbe, which reaches the Kubernetes API at its first control plane's
+// own address, to an address the control planes share. Without it kubectl, bbe and the nodes lose the Kubernetes API
+// while that control plane is down, however many others there are. Returns the shared address, or nothing when the
+// cluster keeps its single one, and the control planes' own addresses
+func offerSharedIp(helperService interfaces.HelperServiceInterface, talosService interfaces.TalosServiceInterface, uiService interfaces.UiServiceInterface, talosEndpoints []string) (string, []string, error) {
+	sharedIp, err := talosService.GetSharedIp(helperService)
+	if err != nil {
+		return "", nil, fmt.Errorf("Error while reading the control planes' shared address: %w", err)
+	}
+	if sharedIp != "" {
+		return sharedIp, talosEndpoints, nil
+	}
+
+	endpointIp, err := talosService.GetControlPlaneIp(helperService, constants.ControlplaneConfigFile)
+	if err != nil {
+		return "", nil, fmt.Errorf("Error while getting control plane IP: %w", err)
+	}
+
+	answer, err := uiService.CreateSelect(fmt.Sprintf("The cluster's Kubernetes API is at %s, a single control plane's address, so it can't be reached while that one is down. Move it to an address the control planes share? Every node is updated, without restarting", endpointIp), []string{"Yes", "No"})
+	if err != nil {
+		panic(err)
+	}
+	if answer != "Yes" {
+		return "", talosEndpoints, nil
+	}
+
+	members, err := talosService.GetMembers(helperService, talosEndpoints)
+	if err != nil {
+		return "", nil, fmt.Errorf("Error while listing the cluster's nodes: %w", err)
+	}
+
+	var controlPlanes, workers, taken []string
+	for _, member := range members {
+		taken = append(taken, member.Spec.Addresses...)
+		if member.Spec.MachineType == models.TalosControlPlaneMachineType {
+			controlPlanes = append(controlPlanes, member.Spec.Addresses[0])
+		} else {
+			workers = append(workers, member.Spec.Addresses[0])
+		}
+	}
+	if len(controlPlanes) == 0 {
+		return "", nil, fmt.Errorf("No control plane found among the cluster's nodes")
+	}
+
+	sharedIp, err = askSharedIp(uiService, controlPlanes[0], taken)
+	if err != nil {
+		return "", nil, fmt.Errorf("Error while asking for the control planes' shared address: %w", err)
+	}
+
+	// The control planes first, which hold the address as soon as they have it, so the nodes pointed at it next
+	// find the Kubernetes API there
+	var networkInterface string
+	for _, controlPlane := range controlPlanes {
+		logger.Infof("Moving control plane %s to %s", controlPlane, sharedIp)
+		networkInterface, err = talosService.GetNodeNetworkInterface(helperService, talosEndpoints, controlPlane)
+		if err != nil {
+			return "", nil, fmt.Errorf("Error while getting the network interface of %s: %w", controlPlane, err)
+		}
+
+		err = talosService.MoveNodeToSharedIp(helperService, talosEndpoints, controlPlane, sharedIp, networkInterface)
+		if err != nil {
+			return "", nil, fmt.Errorf("Error while moving control plane %s to %s: %w", controlPlane, sharedIp, err)
+		}
+	}
+
+	// Workers reach the Kubernetes API through every control plane on their own (Talos's KubePrism), so one that can't
+	// be updated now keeps working
+	for _, worker := range workers {
+		logger.Infof("Moving worker %s to %s", worker, sharedIp)
+		err = talosService.MoveNodeToSharedIp(helperService, talosEndpoints, worker, sharedIp, "")
+		if err != nil {
+			logger.Warning(fmt.Sprintf("Couldn't move worker %s to %s, which keeps reaching the Kubernetes API through the control planes: %s. Point it at the new address later with `talosctl patch machineconfig`", worker, sharedIp, err))
+		}
+	}
+
+	for _, configFile := range []string{constants.ControlplaneConfigFile, constants.WorkerConfigFile} {
+		err = talosService.ModifyClusterEndpoint(helperService, configFile, sharedIp)
+		if err != nil {
+			return "", nil, fmt.Errorf("Error while storing the shared address in file: %w", err)
+		}
+	}
+
+	// Recorded right away, so a setup stopped before the new control plane is set up doesn't offer the move again.
+	// The new control plane replaces the network interface with its own
+	err = talosService.ModifySharedIp(helperService, sharedIp, networkInterface)
+	if err != nil {
+		return "", nil, fmt.Errorf("Error while storing the control planes' shared address in file: %w", err)
+	}
+
+	err = talosService.SetTalosEndpoints(helperService, controlPlanes)
+	if err != nil {
+		return "", nil, fmt.Errorf("Error while recording the control planes in talosconfig: %w", err)
+	}
+
+	err = talosService.VerifyNodeHealth(helperService, controlPlanes)
+	if err != nil {
+		return "", nil, fmt.Errorf("Error while verifying the cluster's health on the shared address: %w", err)
+	}
+
+	err = talosService.DownloadKubeConfig(helperService, controlPlanes)
+	if err != nil {
+		return "", nil, fmt.Errorf("Error while downloading kubeconfig: %w", err)
+	}
+
+	logger.Infof("The Kubernetes API is now at %s, which kubectl uses too", sharedIp)
+
+	return sharedIp, controlPlanes, nil
 }
 
 // Asks which networks may reach the Talos and Kubernetes APIs, suggesting the node's /24. They have to include the

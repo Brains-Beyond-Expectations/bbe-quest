@@ -25,8 +25,8 @@ func (m *MockTalosService) GetLocalVersion() (string, error) {
 	return args.String(0), args.Error(1)
 }
 
-func (m *MockTalosService) GenerateConfig(helperService interfaces.HelperServiceInterface, controlPlaneIp string, clusterName string, talosVersion string) error {
-	args := m.Called(helperService, controlPlaneIp, clusterName, talosVersion)
+func (m *MockTalosService) GenerateConfig(helperService interfaces.HelperServiceInterface, endpointIp string, clusterName string, talosVersion string) error {
+	args := m.Called(helperService, endpointIp, clusterName, talosVersion)
 	return args.Error(0)
 }
 
@@ -35,13 +35,13 @@ func (m *MockTalosService) JoinCluster(helperService interfaces.HelperServiceInt
 	return args.Error(0)
 }
 
-func (m *MockTalosService) BootstrapCluster(helperService interfaces.HelperServiceInterface, nodeIp string, controlPlaneIp string) error {
-	args := m.Called(helperService, nodeIp, controlPlaneIp)
+func (m *MockTalosService) BootstrapCluster(helperService interfaces.HelperServiceInterface, nodeIp string) error {
+	args := m.Called(helperService, nodeIp)
 	return args.Error(0)
 }
 
-func (m *MockTalosService) VerifyNodeHealth(helperService interfaces.HelperServiceInterface, nodeIp string, controlPlaneIp string) error {
-	args := m.Called(helperService, nodeIp, controlPlaneIp)
+func (m *MockTalosService) VerifyNodeHealth(helperService interfaces.HelperServiceInterface, talosEndpoints []string) error {
+	args := m.Called(helperService, talosEndpoints)
 	return args.Error(0)
 }
 
@@ -106,8 +106,50 @@ func (m *MockTalosService) GetControlPlaneIp(helperService interfaces.HelperServ
 	return args.Get(0).(string), args.Error(1)
 }
 
-func (m *MockTalosService) DownloadKubeConfig(helperService interfaces.HelperServiceInterface, nodeIp string, controlPlaneIp string) error {
-	args := m.Called(helperService, nodeIp, controlPlaneIp)
+func (m *MockTalosService) DownloadKubeConfig(helperService interfaces.HelperServiceInterface, talosEndpoints []string) error {
+	args := m.Called(helperService, talosEndpoints)
+	return args.Error(0)
+}
+
+func (m *MockTalosService) GetTalosEndpoints(helperService interfaces.HelperServiceInterface) ([]string, error) {
+	args := m.Called(helperService)
+	endpoints, _ := args.Get(0).([]string)
+	return endpoints, args.Error(1)
+}
+
+func (m *MockTalosService) SetTalosEndpoints(helperService interfaces.HelperServiceInterface, talosEndpoints []string) error {
+	args := m.Called(helperService, talosEndpoints)
+	return args.Error(0)
+}
+
+func (m *MockTalosService) GetMembers(helperService interfaces.HelperServiceInterface, talosEndpoints []string) ([]models.TalosMember, error) {
+	args := m.Called(helperService, talosEndpoints)
+	members, _ := args.Get(0).([]models.TalosMember)
+	return members, args.Error(1)
+}
+
+func (m *MockTalosService) GetNodeNetworkInterface(helperService interfaces.HelperServiceInterface, talosEndpoints []string, nodeIp string) (string, error) {
+	args := m.Called(helperService, talosEndpoints, nodeIp)
+	return args.String(0), args.Error(1)
+}
+
+func (m *MockTalosService) MoveNodeToSharedIp(helperService interfaces.HelperServiceInterface, talosEndpoints []string, nodeIp string, sharedIp string, networkInterface string) error {
+	args := m.Called(helperService, talosEndpoints, nodeIp, sharedIp, networkInterface)
+	return args.Error(0)
+}
+
+func (m *MockTalosService) GetSharedIp(helperService interfaces.HelperServiceInterface) (string, error) {
+	args := m.Called(helperService)
+	return args.String(0), args.Error(1)
+}
+
+func (m *MockTalosService) ModifySharedIp(helperService interfaces.HelperServiceInterface, sharedIp string, networkInterface string) error {
+	args := m.Called(helperService, sharedIp, networkInterface)
+	return args.Error(0)
+}
+
+func (m *MockTalosService) ModifyClusterEndpoint(helperService interfaces.HelperServiceInterface, configFile string, ip string) error {
+	args := m.Called(helperService, configFile, ip)
 	return args.Error(0)
 }
 

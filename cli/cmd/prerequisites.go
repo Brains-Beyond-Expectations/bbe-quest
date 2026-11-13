@@ -152,14 +152,14 @@ func (runner *prerequisiteRunner) clusterAccess() (models.ClusterAccess, error) 
 		return *runner.cluster, nil
 	}
 
-	controlPlaneIp, err := runner.talosService.GetControlPlaneIp(runner.helperService, constants.ControlplaneConfigFile)
+	talosEndpoints, err := runner.talosService.GetTalosEndpoints(runner.helperService)
 	if err != nil {
-		return models.ClusterAccess{}, fmt.Errorf("Failed to find the cluster's control plane: %w", err)
+		return models.ClusterAccess{}, fmt.Errorf("Failed to find the cluster's control planes: %w", err)
 	}
 
 	runner.cluster = &models.ClusterAccess{
 		KubeContext:    runner.bbeConfig.Bbe.Cluster.Context,
-		ControlPlaneIp: controlPlaneIp,
+		TalosEndpoints: talosEndpoints,
 		TalosConfig:    runner.helperService.GetConfigFilePath(constants.TalosConfigFile),
 	}
 

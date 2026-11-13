@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-var cluster = models.ClusterAccess{KubeContext: "admin@test", ControlPlaneIp: "192.168.1.161", TalosConfig: "/config/talosconfig"}
+var cluster = models.ClusterAccess{KubeContext: "admin@test", TalosEndpoints: []string{"192.168.1.161"}, TalosConfig: "/config/talosconfig"}
 
 const nodesJson = `{"items": [
   {"metadata": {"name": "control-1", "labels": {"node-role.kubernetes.io/control-plane": ""}},
@@ -175,6 +175,21 @@ func Test_Check_Succeeds_ReportingWhatEachNodeIsMissing(t *testing.T) {
 		"the /var/mnt/longhorn directory on node `worker-1`",
 	}, missing)
 	assert.Contains(t, *calls, "talosctl get extensions -o yaml --nodes 192.168.1.162 --endpoints 192.168.1.161 --talosconfig /config/talosconfig")
+}
+
+func Test_Check_Succeeds_ReachingTheNodesThroughEveryControlPlane(t *testing.T) {
+	calls := fakeCommands(t, map[string]fakeCommand{
+		"kubectl get nodes":          {output: nodesJson},
+		"talosctl get extensions":    {output: extensionsYaml},
+		"talosctl get machineconfig": {output: newConfigYaml},
+	})
+	prerequisite := models.ChartPrerequisite{Talos: &models.TalosPrerequisite{Extensions: []string{"siderolabs/iscsi-tools"}}}
+	severalControlPlanes := models.ClusterAccess{KubeContext: "admin@test", TalosEndpoints: []string{"192.168.1.161", "192.168.1.163"}, TalosConfig: "/config/talosconfig"}
+
+	_, err := PrerequisiteService{}.Check(prerequisite, severalControlPlanes)
+
+	assert.NoError(t, err)
+	assert.Contains(t, *calls, "talosctl get extensions -o yaml --nodes 192.168.1.162 --endpoints 192.168.1.161,192.168.1.163 --talosconfig /config/talosconfig")
 }
 
 func Test_Check_Succeeds_IgnoringTalosctlWarnings(t *testing.T) {

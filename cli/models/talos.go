@@ -21,6 +21,7 @@ const (
 	TalosKubeSchedulerConfigKind         = "KubeSchedulerConfig"
 	TalosKubeProxyConfigKind             = "KubeProxyConfig"
 	TalosNetworkRuleConfigKind           = "NetworkRuleConfig"
+	TalosLayer2VIPConfigKind             = "Layer2VIPConfig"
 )
 
 // TalosControlPlaneTaint keeps workloads off control plane nodes; removing it is what
@@ -142,6 +143,38 @@ type TalosKubeClusterConfig struct {
 	Kind       string                 `yaml:"kind,omitempty"`
 	Endpoint   string                 `yaml:"endpoint,omitempty"`
 	Unmapped   map[string]interface{} `yaml:",inline"`
+}
+
+// TalosLayer2VIPConfig is an address the control planes share: one of them holds it at a time, and another takes it
+// over when that one goes down. Its name is the address, and its link the network interface it's held on, which may
+// differ from one control plane to the next
+type TalosLayer2VIPConfig struct {
+	ApiVersion string                 `yaml:"apiVersion,omitempty"`
+	Kind       string                 `yaml:"kind,omitempty"`
+	Name       string                 `yaml:"name,omitempty"`
+	Link       string                 `yaml:"link,omitempty"`
+	Unmapped   map[string]interface{} `yaml:",inline"`
+}
+
+// TalosMember is a node of the cluster, as `talosctl get members` lists it
+type TalosMember struct {
+	Spec struct {
+		Addresses   []string `yaml:"addresses"`
+		Hostname    string   `yaml:"hostname"`
+		MachineType string   `yaml:"machineType"`
+	} `yaml:"spec"`
+}
+
+// The machine type of a control plane node in TalosMember
+const TalosControlPlaneMachineType = "controlplane"
+
+// TalosClientConfig is the part bbe reads of talosctl's own config: the endpoints of each context, the addresses
+// talosctl reaches the Talos API through
+type TalosClientConfig struct {
+	Context  string `yaml:"context"`
+	Contexts map[string]struct {
+		Endpoints []string `yaml:"endpoints"`
+	} `yaml:"contexts"`
 }
 
 // TalosKubeNodeConfig holds the node's labels and taints.

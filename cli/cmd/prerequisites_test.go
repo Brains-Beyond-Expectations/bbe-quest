@@ -15,7 +15,7 @@ var (
 	storagePackage = models.ChartEntry{Name: "bbe-storage", Version: "1.0.0"}
 	storageNeeded  = models.ChartPrerequisite{Name: "storage", Description: "Longhorn", StorageClass: "longhorn", Package: "bbe-storage"}
 	nodesNeeded    = models.ChartPrerequisite{Name: "longhorn-nodes", Talos: &models.TalosPrerequisite{Extensions: []string{"siderolabs/util-linux-tools"}, Directories: []string{"/var/mnt/longhorn"}}}
-	testCluster    = models.ClusterAccess{KubeContext: "admin@test", ControlPlaneIp: "192.168.1.161", TalosConfig: "/config/talosconfig"}
+	testCluster    = models.ClusterAccess{KubeContext: "admin@test", TalosEndpoints: []string{"192.168.1.161"}, TalosConfig: "/config/talosconfig"}
 )
 
 type runnerMocks struct {
@@ -35,7 +35,7 @@ func newTestRunner(chosen []string, interactive bool) (*prerequisiteRunner, *run
 		talosService:        &mocks.MockTalosService{},
 		prerequisiteService: &mocks.MockPrerequisiteService{},
 	}
-	m.talosService.On("GetControlPlaneIp", mock.Anything, "controlplane.yaml").Return("192.168.1.161", nil)
+	m.talosService.On("GetTalosEndpoints", mock.Anything).Return([]string{"192.168.1.161"}, nil)
 	m.helperService.On("GetConfigFilePath", "talosconfig").Return("/config/talosconfig")
 
 	bbeConfig := models.BbeConfig{}
@@ -77,7 +77,7 @@ func Test_prerequisiteRunner_Succeeds_WithoutPrerequisites(t *testing.T) {
 	m.packageService.On("GetPrerequisites", mediaPackage).Return(nil, nil)
 
 	assert.NoError(t, runner.ensure(mediaPackage))
-	m.talosService.AssertNotCalled(t, "GetControlPlaneIp", mock.Anything, mock.Anything)
+	m.talosService.AssertNotCalled(t, "GetTalosEndpoints", mock.Anything)
 }
 
 func Test_prerequisiteRunner_Succeeds_InstallingAPickedPackageFirstWithoutAsking(t *testing.T) {
@@ -148,7 +148,7 @@ func Test_prerequisiteRunner_Succeeds_PreparingNodesThenInstallingTheProvider(t 
 	m.prerequisiteService.AssertNumberOfCalls(t, "PrepareNodes", 1)
 	m.uiService.AssertCalled(t, "CreateSelect", "Set up longhorn-nodes for `bbe-storage` now? bbe updates each node that needs it, and nodes missing an extension are upgraded and restart one at a time", []string{"Yes", "No"})
 	// The cluster is only looked up once
-	m.talosService.AssertNumberOfCalls(t, "GetControlPlaneIp", 1)
+	m.talosService.AssertNumberOfCalls(t, "GetTalosEndpoints", 1)
 }
 
 func Test_prerequisiteRunner_Fails_WhenNodesStillMissSomethingAfterPreparing(t *testing.T) {
@@ -200,10 +200,10 @@ func Test_prerequisiteRunner_Fails_WhenPackagesNeedEachOther(t *testing.T) {
 func Test_prerequisiteRunner_Fails_WhenTheControlPlaneIsUnknown(t *testing.T) {
 	runner, m := newTestRunner(nil, true)
 	m.talosService.ExpectedCalls = nil
-	m.talosService.On("GetControlPlaneIp", mock.Anything, mock.Anything).Return("", errors.New("no config"))
+	m.talosService.On("GetTalosEndpoints", mock.Anything).Return(nil, errors.New("no config"))
 	m.packageService.On("GetPrerequisites", mediaPackage).Return([]models.ChartPrerequisite{storageNeeded}, nil)
 
-	assert.EqualError(t, runner.ensure(mediaPackage), "Failed to find the cluster's control plane: no config")
+	assert.EqualError(t, runner.ensure(mediaPackage), "Failed to find the cluster's control planes: no config")
 }
 
 func Test_prerequisiteRunner_Fails_WhenChecksFail(t *testing.T) {
@@ -229,7 +229,7 @@ func Test_installCommand_Succeeds_InstallingAPrerequisiteFirstAndRecordingIt(t *
 	uiService.On("CreateMultiChoose", mock.Anything, mock.Anything, mock.Anything).Return([]string{"bbe-media"}, nil)
 	uiService.On("CreateSelect", mock.Anything, mock.Anything).Return("Yes", nil)
 	helmService.On("IsPackageInstalled", mock.Anything, mock.Anything, mock.Anything).Return(false)
-	talosService.On("GetControlPlaneIp", mock.Anything, mock.Anything).Return("192.168.1.161", nil)
+	talosService.On("GetTalosEndpoints", mock.Anything).Return([]string{"192.168.1.161"}, nil)
 	helperService.On("GetConfigFilePath", "talosconfig").Return("/config/talosconfig")
 	packageService.On("GetPrerequisites", mediaPackage).Return([]models.ChartPrerequisite{storageNeeded}, nil)
 	packageService.On("GetPrerequisites", storagePackage).Return(nil, nil)
@@ -259,7 +259,7 @@ func Test_installCommand_Fails_WithoutAPrerequisite_ButRecordsWhatWasInstalled(t
 	uiService.On("CreateMultiChoose", mock.Anything, mock.Anything, mock.Anything).Return([]string{"bbe-networking", "bbe-media"}, nil)
 	uiService.On("CreateSelect", mock.Anything, mock.Anything).Return("No", nil)
 	helmService.On("IsPackageInstalled", mock.Anything, mock.Anything, mock.Anything).Return(false)
-	talosService.On("GetControlPlaneIp", mock.Anything, mock.Anything).Return("192.168.1.161", nil)
+	talosService.On("GetTalosEndpoints", mock.Anything).Return([]string{"192.168.1.161"}, nil)
 	helperService.On("GetConfigFilePath", "talosconfig").Return("/config/talosconfig")
 	packageService.On("GetPrerequisites", otherPackage).Return(nil, nil)
 	packageService.On("GetPrerequisites", mediaPackage).Return([]models.ChartPrerequisite{storageNeeded}, nil)
@@ -282,7 +282,7 @@ func Test_upgradeCommand_Fails_WhenANewerVersionNeedsAPrerequisite(t *testing.T)
 	configService.On("GetBbeConfig", mock.Anything).Return(bbeConfig, nil)
 	configService.On("UpdateBbePackages", mock.Anything, mock.Anything).Return(nil)
 	packageService.On("GetAll").Return([]models.ChartEntry{mediaPackage, storagePackage}, nil)
-	talosService.On("GetControlPlaneIp", mock.Anything, mock.Anything).Return("192.168.1.161", nil)
+	talosService.On("GetTalosEndpoints", mock.Anything).Return([]string{"192.168.1.161"}, nil)
 	helperService.On("GetConfigFilePath", "talosconfig").Return("/config/talosconfig")
 	packageService.On("GetPrerequisites", mediaPackage).Return([]models.ChartPrerequisite{storageNeeded}, nil)
 	prerequisiteService.On("Check", storageNeeded, testCluster).Return([]string{"the `longhorn` storage class"}, nil)
@@ -303,7 +303,7 @@ func Test_upgradeCommand_Succeeds_InstallingANewPrerequisite(t *testing.T) {
 	configService.On("UpdateBbePackages", mock.Anything, mock.Anything).Return(nil)
 	packageService.On("GetAll").Return([]models.ChartEntry{mediaPackage, storagePackage}, nil)
 	uiService.On("CreateSelect", mock.Anything, mock.Anything).Return("Yes", nil)
-	talosService.On("GetControlPlaneIp", mock.Anything, mock.Anything).Return("192.168.1.161", nil)
+	talosService.On("GetTalosEndpoints", mock.Anything).Return([]string{"192.168.1.161"}, nil)
 	helperService.On("GetConfigFilePath", "talosconfig").Return("/config/talosconfig")
 	packageService.On("GetPrerequisites", mediaPackage).Return([]models.ChartPrerequisite{storageNeeded}, nil)
 	packageService.On("GetPrerequisites", storagePackage).Return(nil, nil)

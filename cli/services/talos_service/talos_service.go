@@ -99,11 +99,11 @@ func parseTalosVersion(output string) (string, error) {
 	return matches[1], nil
 }
 
-// GenerateConfig generates a fresh cluster config, pinning --talos-version so the config
-// schema matches the Talos version the node image was built for rather than whatever
+// GenerateConfig generates a fresh cluster config, whose nodes reach the Kubernetes API at endpointIp, pinning
+// --talos-version so the config schema matches the Talos version the node image was built for rather than whatever
 // talosctl happens to be installed locally.
-func (talosService TalosService) GenerateConfig(helperService interfaces.HelperServiceInterface, controlPlaneIp string, clusterName string, talosVersion string) error {
-	cmd := execCommand("talosctl", "gen", "config", clusterName, fmt.Sprintf("https://%s:6443", controlPlaneIp), "--talos-version", talosVersion, "--output", helperService.GetConfigDir())
+func (talosService TalosService) GenerateConfig(helperService interfaces.HelperServiceInterface, endpointIp string, clusterName string, talosVersion string) error {
+	cmd := execCommand("talosctl", "gen", "config", clusterName, clusterEndpoint(endpointIp), "--talos-version", talosVersion, "--output", helperService.GetConfigDir())
 	output, err := cmd.CombinedOutput()
 	logger.Debug(string(output))
 
@@ -131,7 +131,9 @@ func (talosService TalosService) JoinCluster(helperService interfaces.HelperServ
 	return nil
 }
 
-func (talosService TalosService) BootstrapCluster(helperService interfaces.HelperServiceInterface, nodeIp string, controlPlaneIp string) error {
+// BootstrapCluster starts etcd on the first control plane, which the cluster then grows from. Talos is reached at the
+// node's own address, as the address the control planes share only comes up once etcd runs
+func (talosService TalosService) BootstrapCluster(helperService interfaces.HelperServiceInterface, nodeIp string) error {
 	logger.Info("Bootstrapping cluster, this might take a few minutes...")
 
 	configFilePath := helperService.GetConfigFilePath(constants.TalosConfigFile)
@@ -139,7 +141,7 @@ func (talosService TalosService) BootstrapCluster(helperService interfaces.Helpe
 	start := time.Now()
 	timeout := fiveMinutes
 	for {
-		cmd := execCommand("talosctl", "bootstrap", "--nodes", nodeIp, "--endpoints", controlPlaneIp, fmt.Sprintf("--talosconfig=%s", configFilePath))
+		cmd := execCommand("talosctl", "bootstrap", "--nodes", nodeIp, "--endpoints", nodeIp, fmt.Sprintf("--talosconfig=%s", configFilePath))
 		output, err := cmd.CombinedOutput()
 		logger.Debug(string(output))
 
@@ -155,17 +157,23 @@ func (talosService TalosService) BootstrapCluster(helperService interfaces.Helpe
 	}
 }
 
-func (talosService TalosService) VerifyNodeHealth(helperService interfaces.HelperServiceInterface, nodeIp string, controlPlaneIp string) error {
+// VerifyNodeHealth waits for the cluster to be healthy, the node just set up included once it has joined. Only a
+// control plane answers the health check, so each attempt asks the next of the control planes' addresses, in case
+// one of them is down
+func (talosService TalosService) VerifyNodeHealth(helperService interfaces.HelperServiceInterface, talosEndpoints []string) error {
 	logger.Info("Verifying cluster health, this might take a few minutes...")
+
+	if len(talosEndpoints) == 0 {
+		return fmt.Errorf("No control plane to check the cluster's health through")
+	}
 
 	configFilePath := helperService.GetConfigFilePath(constants.TalosConfigFile)
 
 	start := time.Now()
 	timeout := fiveMinutes
-	for {
-		// Only a control plane node answers the health check, which checks every node in the cluster, the new one
-		// included once it has joined
-		cmd := execCommand("talosctl", "--nodes", controlPlaneIp, "--endpoints", controlPlaneIp, "health", fmt.Sprintf("--talosconfig=%s", configFilePath))
+	for attempt := 0; ; attempt++ {
+		controlPlane := talosEndpoints[attempt%len(talosEndpoints)]
+		cmd := execCommand("talosctl", "--nodes", controlPlane, "--endpoints", controlPlane, "health", fmt.Sprintf("--talosconfig=%s", configFilePath))
 		output, err := cmd.CombinedOutput()
 		logger.Debug(string(output))
 
@@ -702,16 +710,251 @@ func (talosService TalosService) GetControlPlaneIp(helperService interfaces.Help
 	return endpoint, nil
 }
 
-func (talosService TalosService) DownloadKubeConfig(helperService interfaces.HelperServiceInterface, nodeIp string, controlPlaneIp string) error {
-	cmd := execCommand("talosctl", "kubeconfig", "--nodes", nodeIp, "--endpoints", controlPlaneIp, fmt.Sprintf("--talosconfig=%s", helperService.GetConfigFilePath(constants.TalosConfigFile)))
+// DownloadKubeConfig adds the cluster to kubectl's config, from the first control plane that answers. It replaces the
+// cluster's earlier entry, which is how kubectl moves to the address the control planes share
+func (talosService TalosService) DownloadKubeConfig(helperService interfaces.HelperServiceInterface, talosEndpoints []string) error {
+	configFilePath := helperService.GetConfigFilePath(constants.TalosConfigFile)
+
+	return onAnyControlPlane(talosEndpoints, func(controlPlane string) error {
+		cmd := execCommand("talosctl", "kubeconfig", "--force", "--nodes", controlPlane, "--endpoints", controlPlane, fmt.Sprintf("--talosconfig=%s", configFilePath))
+		output, err := cmd.CombinedOutput()
+		logger.Debug(string(output))
+
+		return err
+	})
+}
+
+// GetTalosEndpoints returns the control planes' own addresses, which talosctl reaches the Talos API through. bbe
+// records them in talosconfig as control planes join; a cluster created by an earlier bbe has none there, and its
+// only control plane is the one the Kubernetes API's address in the configs leads to
+func (talosService TalosService) GetTalosEndpoints(helperService interfaces.HelperServiceInterface) ([]string, error) {
+	content, err := osReadFile(helperService.GetConfigFilePath(constants.TalosConfigFile))
+	if err != nil {
+		return nil, err
+	}
+
+	var clientConfig models.TalosClientConfig
+	if err := yaml.Unmarshal(content, &clientConfig); err != nil {
+		return nil, fmt.Errorf("could not read talosconfig: %w", err)
+	}
+
+	if endpoints := clientConfig.Contexts[clientConfig.Context].Endpoints; len(endpoints) > 0 {
+		return endpoints, nil
+	}
+
+	controlPlaneIp, err := talosService.GetControlPlaneIp(helperService, constants.ControlplaneConfigFile)
+	if err != nil {
+		return nil, err
+	}
+
+	return []string{controlPlaneIp}, nil
+}
+
+// SetTalosEndpoints records the control planes' own addresses in talosconfig, so bbe and talosctl reach the cluster
+// through any of them. The address they share isn't one: it only answers while etcd is healthy, and moves between
+// control planes, cutting off whatever talosctl was doing
+func (talosService TalosService) SetTalosEndpoints(helperService interfaces.HelperServiceInterface, talosEndpoints []string) error {
+	args := append([]string{"--talosconfig", helperService.GetConfigFilePath(constants.TalosConfigFile), "config", "endpoint"}, talosEndpoints...)
+	cmd := execCommand("talosctl", args...)
 	output, err := cmd.CombinedOutput()
 	logger.Debug(string(output))
 
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: %s", err, strings.TrimSpace(string(output)))
 	}
 
 	return nil
+}
+
+// GetMembers lists the cluster's nodes, as the first control plane that answers knows them
+func (talosService TalosService) GetMembers(helperService interfaces.HelperServiceInterface, talosEndpoints []string) ([]models.TalosMember, error) {
+	configFilePath := helperService.GetConfigFilePath(constants.TalosConfigFile)
+
+	var members []models.TalosMember
+	err := onAnyControlPlane(talosEndpoints, func(controlPlane string) error {
+		cmd := execCommand("talosctl", "get", "members", "-o", "yaml", "--nodes", controlPlane, "--endpoints", controlPlane, fmt.Sprintf("--talosconfig=%s", configFilePath))
+		output, err := command.Output(cmd)
+		logger.Debug(string(output))
+		if err != nil {
+			return err
+		}
+
+		members, err = parseMembers(output)
+		return err
+	})
+
+	return members, err
+}
+
+func parseMembers(output []byte) ([]models.TalosMember, error) {
+	decoder := yaml.NewDecoder(bytes.NewReader(output))
+
+	members := []models.TalosMember{}
+	for {
+		var member models.TalosMember
+		err := decoder.Decode(&member)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("could not parse the cluster's members: %w", err)
+		}
+
+		if len(member.Spec.Addresses) == 0 {
+			continue
+		}
+
+		members = append(members, member)
+	}
+
+	return members, nil
+}
+
+// GetNodeNetworkInterface is GetNetworkInterface for a node already in the cluster, which only answers talosctl
+// with talosconfig's certificate
+func (talosService TalosService) GetNodeNetworkInterface(helperService interfaces.HelperServiceInterface, talosEndpoints []string, nodeIp string) (string, error) {
+	cmd := execCommand("talosctl", "get", "addresses", "--nodes", nodeIp, "--endpoints", strings.Join(talosEndpoints, ","), fmt.Sprintf("--talosconfig=%s", helperService.GetConfigFilePath(constants.TalosConfigFile)))
+	output, err := command.Output(cmd)
+	logger.Debug(string(output))
+
+	if err != nil {
+		return "", err
+	}
+
+	return parseNetworkInterface(string(output), nodeIp)
+}
+
+// MoveNodeToSharedIp points a node of the cluster at the Kubernetes API on the address the control planes share. A
+// control plane, given the network interface to hold the address on, also takes part in holding it. Talos applies
+// both without restarting the node
+func (talosService TalosService) MoveNodeToSharedIp(helperService interfaces.HelperServiceInterface, talosEndpoints []string, nodeIp string, sharedIp string, networkInterface string) error {
+	patches := []interface{}{
+		models.TalosKubeClusterConfig{
+			ApiVersion: models.TalosConfigApiVersion,
+			Kind:       models.TalosKubeClusterConfigKind,
+			Endpoint:   clusterEndpoint(sharedIp),
+		},
+	}
+	if networkInterface != "" {
+		patches = append(patches, models.TalosLayer2VIPConfig{
+			ApiVersion: models.TalosConfigApiVersion,
+			Kind:       models.TalosLayer2VIPConfigKind,
+			Name:       sharedIp,
+			Link:       networkInterface,
+		})
+	}
+
+	args := []string{"patch", "machineconfig", "--nodes", nodeIp, "--endpoints", strings.Join(talosEndpoints, ","), fmt.Sprintf("--talosconfig=%s", helperService.GetConfigFilePath(constants.TalosConfigFile))}
+	for _, patch := range patches {
+		marshaled, err := yamlMarshal(patch)
+		if err != nil {
+			return err
+		}
+		args = append(args, "--patch", string(marshaled))
+	}
+
+	cmd := execCommand("talosctl", args...)
+	output, err := command.Output(cmd)
+	logger.Debug(string(output))
+
+	if err != nil {
+		return fmt.Errorf("%w: %s", err, strings.TrimSpace(string(output)))
+	}
+
+	return nil
+}
+
+// GetSharedIp returns the address the control planes share for the Kubernetes API, or nothing when the cluster was
+// created by an earlier bbe without one
+func (talosService TalosService) GetSharedIp(helperService interfaces.HelperServiceInterface) (string, error) {
+	documents, err := getParsedDocuments(helperService.GetConfigDir(), constants.ControlplaneConfigFile)
+	if err != nil {
+		return "", err
+	}
+
+	document, index := findDocument(documents, models.TalosLayer2VIPConfigKind)
+	if index == -1 {
+		return "", nil
+	}
+
+	var vipConfig models.TalosLayer2VIPConfig
+	if err := decodeDocument(document, &vipConfig); err != nil {
+		return "", err
+	}
+
+	return vipConfig.Name, nil
+}
+
+// ModifySharedIp has the control plane set up from the config take part in holding the address the control planes
+// share, on its network interface
+func (talosService TalosService) ModifySharedIp(helperService interfaces.HelperServiceInterface, sharedIp string, networkInterface string) error {
+	configDir := helperService.GetConfigDir()
+	configFile := constants.ControlplaneConfigFile
+
+	documents, err := getParsedDocuments(configDir, configFile)
+	if err != nil {
+		return err
+	}
+
+	var vipConfig models.TalosLayer2VIPConfig
+	index, err := getOrCreateDocument(&documents, models.TalosLayer2VIPConfigKind, &vipConfig)
+	if err != nil {
+		return err
+	}
+
+	vipConfig.Name = sharedIp
+	vipConfig.Link = networkInterface
+
+	if err := setDocument(documents, index, vipConfig); err != nil {
+		return err
+	}
+
+	return writeDocuments(configDir, configFile, documents)
+}
+
+// ModifyClusterEndpoint points the nodes set up from the config at the Kubernetes API on the given address
+func (talosService TalosService) ModifyClusterEndpoint(helperService interfaces.HelperServiceInterface, configFile string, ip string) error {
+	configDir := helperService.GetConfigDir()
+
+	documents, err := getParsedDocuments(configDir, configFile)
+	if err != nil {
+		return err
+	}
+
+	var kubeClusterConfig models.TalosKubeClusterConfig
+	index, err := getDocument(documents, models.TalosKubeClusterConfigKind, &kubeClusterConfig)
+	if err != nil {
+		return err
+	}
+
+	kubeClusterConfig.Endpoint = clusterEndpoint(ip)
+
+	if err := setDocument(documents, index, kubeClusterConfig); err != nil {
+		return err
+	}
+
+	return writeDocuments(configDir, configFile, documents)
+}
+
+func clusterEndpoint(ip string) string {
+	return fmt.Sprintf("https://%s:6443", ip)
+}
+
+// onAnyControlPlane runs action against each control plane in turn, until one succeeds
+func onAnyControlPlane(talosEndpoints []string, action func(controlPlane string) error) error {
+	if len(talosEndpoints) == 0 {
+		return fmt.Errorf("No control plane to reach the cluster through")
+	}
+
+	var err error
+	for _, controlPlane := range talosEndpoints {
+		if err = action(controlPlane); err == nil {
+			return nil
+		}
+		logger.Debug(fmt.Sprintf("Control plane %s didn't answer: %s", controlPlane, err))
+	}
+
+	return err
 }
 
 // getParsedDocuments reads every YAML document in a Talos machine config file. Since Talos

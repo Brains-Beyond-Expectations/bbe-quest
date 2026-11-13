@@ -279,7 +279,7 @@ func Test_BootstrapCluster_Succeeds_WaitsForBootstrapToSucceed(t *testing.T) {
 	helperService.On("GetConfigFilePath", constants.TalosConfigFile).Return("test")
 
 	talosService := TalosService{}
-	err := talosService.BootstrapCluster(&helperService, "127.0.0.1", "test")
+	err := talosService.BootstrapCluster(&helperService, "127.0.0.1")
 
 	assert.Nil(t, err)
 	helperService.AssertNumberOfCalls(t, "GetConfigFilePath", 1)
@@ -297,7 +297,7 @@ func Test_BootstrapCluster_Fails_AfterTimeout(t *testing.T) {
 	helperService.On("GetConfigFilePath", constants.TalosConfigFile).Return("test")
 
 	talosService := TalosService{}
-	err := talosService.BootstrapCluster(&helperService, "127.0.0.1", "test")
+	err := talosService.BootstrapCluster(&helperService, "127.0.0.1")
 
 	assert.Error(t, err)
 	helperService.AssertNumberOfCalls(t, "GetConfigFilePath", 1)
@@ -319,7 +319,7 @@ func Test_VerifyNodeHealth_Succeeds_WaitsForBootstrapToSucceed(t *testing.T) {
 	helperService.On("GetConfigFilePath", constants.TalosConfigFile).Return("test")
 
 	talosService := TalosService{}
-	err := talosService.VerifyNodeHealth(&helperService, "127.0.0.1", "test")
+	err := talosService.VerifyNodeHealth(&helperService, []string{"127.0.0.1"})
 
 	assert.Nil(t, err)
 	helperService.AssertNumberOfCalls(t, "GetConfigFilePath", 1)
@@ -337,7 +337,7 @@ func Test_VerifyNodeHealth_Fails_AfterTimeout(t *testing.T) {
 	helperService.On("GetConfigFilePath", constants.TalosConfigFile).Return("test")
 
 	talosService := TalosService{}
-	err := talosService.VerifyNodeHealth(&helperService, "127.0.0.1", "test")
+	err := talosService.VerifyNodeHealth(&helperService, []string{"127.0.0.1"})
 
 	assert.Error(t, err)
 	helperService.AssertNumberOfCalls(t, "GetConfigFilePath", 1)
@@ -1367,7 +1367,7 @@ func Test_DownloadKubeConfig_Succeeds(t *testing.T) {
 	helperService.On("GetConfigFilePath", constants.TalosConfigFile).Return("test")
 
 	talosService := TalosService{}
-	err := talosService.DownloadKubeConfig(&helperService, "127.0.0.1", "0.0.0.0")
+	err := talosService.DownloadKubeConfig(&helperService, []string{"127.0.0.1"})
 
 	assert.Nil(t, err)
 	helperService.AssertNumberOfCalls(t, "GetConfigFilePath", 1)
@@ -1382,7 +1382,7 @@ func Test_DownloadKubeConfig_Fails_IfTalosCtlFails(t *testing.T) {
 	helperService.On("GetConfigFilePath", constants.TalosConfigFile).Return("test")
 
 	talosService := TalosService{}
-	err := talosService.DownloadKubeConfig(&helperService, "127.0.0.1", "0.0.0.0")
+	err := talosService.DownloadKubeConfig(&helperService, []string{"127.0.0.1"})
 
 	assert.NotNil(t, err)
 	helperService.AssertNumberOfCalls(t, "GetConfigFilePath", 1)
@@ -1465,10 +1465,13 @@ func Test_ModifyUserVolumes_Fails_IfVolumeCannotBeEncoded(t *testing.T) {
 	yamlMarshal = yaml.Marshal
 }
 
-func Test_VerifyNodeHealth_Succeeds_AskingTheControlPlane(t *testing.T) {
-	var args []string
+func Test_VerifyNodeHealth_Succeeds_AskingTheNextControlPlane_WhenOneDoesNotAnswer(t *testing.T) {
+	var calls [][]string
 	execCommand = func(_ string, arguments ...string) *exec.Cmd {
-		args = arguments
+		calls = append(calls, arguments)
+		if len(calls) == 1 {
+			return exec.Command("false")
+		}
 		return exec.Command("echo")
 	}
 	tenSeconds = time.Nanosecond
@@ -1477,10 +1480,21 @@ func Test_VerifyNodeHealth_Succeeds_AskingTheControlPlane(t *testing.T) {
 	helperService := mocks.MockHelperService{}
 	helperService.On("GetConfigFilePath", constants.TalosConfigFile).Return("test")
 
-	err := TalosService{}.VerifyNodeHealth(&helperService, "192.168.1.117", "192.168.1.161")
+	err := TalosService{}.VerifyNodeHealth(&helperService, []string{"192.168.1.161", "192.168.1.163"})
 
 	assert.Nil(t, err)
-	assert.Equal(t, []string{"--nodes", "192.168.1.161", "--endpoints", "192.168.1.161", "health", "--talosconfig=test"}, args)
+	assert.Equal(t, [][]string{
+		{"--nodes", "192.168.1.161", "--endpoints", "192.168.1.161", "health", "--talosconfig=test"},
+		{"--nodes", "192.168.1.163", "--endpoints", "192.168.1.163", "health", "--talosconfig=test"},
+	}, calls)
+}
+
+func Test_VerifyNodeHealth_Fails_WithoutControlPlanes(t *testing.T) {
+	helperService := mocks.MockHelperService{}
+
+	err := TalosService{}.VerifyNodeHealth(&helperService, nil)
+
+	assert.ErrorContains(t, err, "No control plane")
 }
 
 func Test_ModifyInstallerImage_Succeeds_KeepingTheRest(t *testing.T) {
@@ -1530,7 +1544,6 @@ func Test_ModifyInstallerImage_Fails_WithoutTheInstallDocument(t *testing.T) {
 
 	assert.Error(t, err)
 }
-
 
 func Test_ModifyNetworkPolicies_Succeeds_KeepingTheRest(t *testing.T) {
 	configYaml := buildMultiDocYaml(t,
@@ -1738,4 +1751,406 @@ func Test_ModifyFirewall_Fails_WithoutTheKubernetesNetwork(t *testing.T) {
 	mockOs.AssertNotCalled(t, "WriteFile", mock.Anything, mock.Anything, mock.Anything)
 
 	osReadFile = os.ReadFile
+}
+
+func Test_BootstrapCluster_Succeeds_ReachingTheNodeAtItsOwnAddress(t *testing.T) {
+	var args []string
+	execCommand = func(_ string, arguments ...string) *exec.Cmd {
+		args = arguments
+		return exec.Command("echo")
+	}
+	t.Cleanup(func() { execCommand = exec.Command })
+
+	helperService := mocks.MockHelperService{}
+	helperService.On("GetConfigFilePath", constants.TalosConfigFile).Return("test")
+
+	err := TalosService{}.BootstrapCluster(&helperService, "192.168.1.161")
+
+	assert.Nil(t, err)
+	assert.Equal(t, []string{"bootstrap", "--nodes", "192.168.1.161", "--endpoints", "192.168.1.161", "--talosconfig=test"}, args)
+}
+
+func Test_DownloadKubeConfig_Succeeds_FromTheNextControlPlane_ReplacingTheEarlierEntry(t *testing.T) {
+	var calls [][]string
+	execCommand = func(_ string, arguments ...string) *exec.Cmd {
+		calls = append(calls, arguments)
+		if len(calls) == 1 {
+			return exec.Command("false")
+		}
+		return exec.Command("echo")
+	}
+	t.Cleanup(func() { execCommand = exec.Command })
+
+	helperService := mocks.MockHelperService{}
+	helperService.On("GetConfigFilePath", constants.TalosConfigFile).Return("test")
+
+	err := TalosService{}.DownloadKubeConfig(&helperService, []string{"192.168.1.161", "192.168.1.163"})
+
+	assert.Nil(t, err)
+	assert.Equal(t, []string{"kubeconfig", "--force", "--nodes", "192.168.1.163", "--endpoints", "192.168.1.163", "--talosconfig=test"}, calls[1])
+}
+
+func Test_DownloadKubeConfig_Fails_WhenNoControlPlaneAnswers(t *testing.T) {
+	execCommand = func(_ string, _ ...string) *exec.Cmd {
+		return exec.Command("false")
+	}
+	t.Cleanup(func() { execCommand = exec.Command })
+
+	helperService := mocks.MockHelperService{}
+	helperService.On("GetConfigFilePath", constants.TalosConfigFile).Return("test")
+
+	err := TalosService{}.DownloadKubeConfig(&helperService, []string{"192.168.1.161", "192.168.1.163"})
+
+	assert.Error(t, err)
+}
+
+const talosconfigYaml = `context: modest-mega-man
+contexts:
+    modest-mega-man:
+        endpoints:
+            - 192.168.1.161
+            - 192.168.1.163
+        ca: c2VjcmV0
+`
+
+func Test_GetTalosEndpoints_Succeeds_FromTalosconfig(t *testing.T) {
+	mockOs := mocks.MockOs{}
+	mockOs.On("ReadFile", "/config/talosconfig").Return([]byte(talosconfigYaml), nil)
+	osReadFile = mockOs.ReadFile
+	t.Cleanup(func() { osReadFile = os.ReadFile })
+
+	helperService := mocks.MockHelperService{}
+	helperService.On("GetConfigFilePath", constants.TalosConfigFile).Return("/config/talosconfig")
+
+	endpoints, err := TalosService{}.GetTalosEndpoints(&helperService)
+
+	assert.Nil(t, err)
+	assert.Equal(t, []string{"192.168.1.161", "192.168.1.163"}, endpoints)
+}
+
+func Test_GetTalosEndpoints_Succeeds_FallingBackToTheKubernetesEndpoint_InAClusterFromAnEarlierBbe(t *testing.T) {
+	controlPlaneYaml := buildMultiDocYaml(t, map[interface{}]interface{}{"kind": models.TalosKubeClusterConfigKind, "endpoint": "https://192.168.1.161:6443"})
+
+	mockOs := mocks.MockOs{}
+	mockOs.On("ReadFile", "/config/talosconfig").Return([]byte("context: modest-mega-man\ncontexts:\n    modest-mega-man:\n        endpoints: []\n"), nil)
+	mockOs.On("ReadFile", "/config/controlplane.yaml").Return(controlPlaneYaml, nil)
+	osReadFile = mockOs.ReadFile
+	t.Cleanup(func() { osReadFile = os.ReadFile })
+
+	helperService := mocks.MockHelperService{}
+	helperService.On("GetConfigFilePath", constants.TalosConfigFile).Return("/config/talosconfig")
+	helperService.On("GetConfigDir").Return("/config")
+
+	endpoints, err := TalosService{}.GetTalosEndpoints(&helperService)
+
+	assert.Nil(t, err)
+	assert.Equal(t, []string{"192.168.1.161"}, endpoints)
+}
+
+func Test_GetTalosEndpoints_Fails_WithAnUnreadableTalosconfig(t *testing.T) {
+	mockOs := mocks.MockOs{}
+	mockOs.On("ReadFile", mock.Anything).Return([]byte("context: [unclosed"), nil)
+	osReadFile = mockOs.ReadFile
+	t.Cleanup(func() { osReadFile = os.ReadFile })
+
+	helperService := mocks.MockHelperService{}
+	helperService.On("GetConfigFilePath", constants.TalosConfigFile).Return("/config/talosconfig")
+
+	_, err := TalosService{}.GetTalosEndpoints(&helperService)
+
+	assert.ErrorContains(t, err, "could not read talosconfig")
+}
+
+func Test_SetTalosEndpoints_Succeeds(t *testing.T) {
+	var args []string
+	execCommand = func(_ string, arguments ...string) *exec.Cmd {
+		args = arguments
+		return exec.Command("echo")
+	}
+	t.Cleanup(func() { execCommand = exec.Command })
+
+	helperService := mocks.MockHelperService{}
+	helperService.On("GetConfigFilePath", constants.TalosConfigFile).Return("/config/talosconfig")
+
+	err := TalosService{}.SetTalosEndpoints(&helperService, []string{"192.168.1.161", "192.168.1.163"})
+
+	assert.Nil(t, err)
+	assert.Equal(t, []string{"--talosconfig", "/config/talosconfig", "config", "endpoint", "192.168.1.161", "192.168.1.163"}, args)
+}
+
+func Test_SetTalosEndpoints_Fails_IfTalosctlFails(t *testing.T) {
+	execCommand = func(_ string, _ ...string) *exec.Cmd {
+		return exec.Command("sh", "-c", "echo broken; exit 1")
+	}
+	t.Cleanup(func() { execCommand = exec.Command })
+
+	helperService := mocks.MockHelperService{}
+	helperService.On("GetConfigFilePath", constants.TalosConfigFile).Return("/config/talosconfig")
+
+	err := TalosService{}.SetTalosEndpoints(&helperService, []string{"192.168.1.161"})
+
+	assert.ErrorContains(t, err, "broken")
+}
+
+// trimmed from real "talosctl get members -o yaml" output
+const membersOutput = `node: 192.168.1.161
+metadata:
+    namespace: cluster
+    type: Members.cluster.talos.dev
+    id: distinct-grey-gargoyle
+spec:
+    nodeId: 3cu3yoESTEVcf9UbMb7XLkHOF4oFiFrea2LRE7qV2O7
+    addresses:
+        - 192.168.1.161
+    hostname: distinct-grey-gargoyle
+    machineType: controlplane
+    operatingSystem: Talos (v1.14.1)
+    controlPlane:
+        port: 6443
+---
+node: 192.168.1.161
+metadata:
+    namespace: cluster
+    type: Members.cluster.talos.dev
+    id: guiding-smiling-tiger
+spec:
+    nodeId: YIi4A7WTJLwikvkZPxFyHZN2IxmlLNJYxFEceYxtAiO
+    addresses:
+        - 192.168.1.184
+    hostname: guiding-smiling-tiger
+    machineType: worker
+    operatingSystem: Talos (v1.14.1)
+`
+
+func Test_GetMembers_Succeeds_IgnoringTalosctlWarnings(t *testing.T) {
+	execCommand = func(_ string, _ ...string) *exec.Cmd {
+		return exec.Command("sh", "-c", `echo "WARNING: 192.168.1.161: server version 1.14.1 is older than client version 1.14.2" >&2; printf '%s' "$0"`, membersOutput)
+	}
+	t.Cleanup(func() { execCommand = exec.Command })
+
+	helperService := mocks.MockHelperService{}
+	helperService.On("GetConfigFilePath", constants.TalosConfigFile).Return("test")
+
+	members, err := TalosService{}.GetMembers(&helperService, []string{"192.168.1.161"})
+
+	assert.Nil(t, err)
+	assert.Len(t, members, 2)
+	assert.Equal(t, []string{"192.168.1.161"}, members[0].Spec.Addresses)
+	assert.Equal(t, models.TalosControlPlaneMachineType, members[0].Spec.MachineType)
+	assert.Equal(t, "guiding-smiling-tiger", members[1].Spec.Hostname)
+	assert.Equal(t, "worker", members[1].Spec.MachineType)
+}
+
+func Test_GetMembers_Fails_IfOutputUnparsable(t *testing.T) {
+	execCommand = func(_ string, _ ...string) *exec.Cmd {
+		return exec.Command("echo", "spec: [unclosed")
+	}
+	t.Cleanup(func() { execCommand = exec.Command })
+
+	helperService := mocks.MockHelperService{}
+	helperService.On("GetConfigFilePath", constants.TalosConfigFile).Return("test")
+
+	_, err := TalosService{}.GetMembers(&helperService, []string{"192.168.1.161"})
+
+	assert.ErrorContains(t, err, "could not parse the cluster's members")
+}
+
+func Test_GetNodeNetworkInterface_Succeeds_ThroughTheControlPlanes(t *testing.T) {
+	var args []string
+	execCommand = func(_ string, arguments ...string) *exec.Cmd {
+		args = arguments
+		return exec.Command("echo", "192.168.1.161   network     AddressStatus   enp57s0u1u1/192.168.1.161/24   1   192.168.1.161/24   enp57s0u1u1")
+	}
+	t.Cleanup(func() { execCommand = exec.Command })
+
+	helperService := mocks.MockHelperService{}
+	helperService.On("GetConfigFilePath", constants.TalosConfigFile).Return("test")
+
+	link, err := TalosService{}.GetNodeNetworkInterface(&helperService, []string{"192.168.1.161", "192.168.1.163"}, "192.168.1.161")
+
+	assert.Nil(t, err)
+	assert.Equal(t, "enp57s0u1u1", link)
+	assert.Equal(t, []string{"get", "addresses", "--nodes", "192.168.1.161", "--endpoints", "192.168.1.161,192.168.1.163", "--talosconfig=test"}, args)
+}
+
+func Test_MoveNodeToSharedIp_Succeeds_HoldingTheAddress_OnAControlPlane(t *testing.T) {
+	var args []string
+	execCommand = func(_ string, arguments ...string) *exec.Cmd {
+		args = arguments
+		return exec.Command("echo")
+	}
+	t.Cleanup(func() { execCommand = exec.Command })
+
+	helperService := mocks.MockHelperService{}
+	helperService.On("GetConfigFilePath", constants.TalosConfigFile).Return("test")
+
+	err := TalosService{}.MoveNodeToSharedIp(&helperService, []string{"192.168.1.161"}, "192.168.1.161", "192.168.1.250", "enp57s0u1u1")
+
+	assert.Nil(t, err)
+	assert.Equal(t, []string{
+		"patch", "machineconfig", "--nodes", "192.168.1.161", "--endpoints", "192.168.1.161", "--talosconfig=test",
+		"--patch", "apiVersion: v1alpha1\nkind: KubeClusterConfig\nendpoint: https://192.168.1.250:6443\n",
+		"--patch", "apiVersion: v1alpha1\nkind: Layer2VIPConfig\nname: 192.168.1.250\nlink: enp57s0u1u1\n",
+	}, args)
+}
+
+func Test_MoveNodeToSharedIp_Succeeds_OnlyMovingTheEndpoint_OnAWorker(t *testing.T) {
+	var args []string
+	execCommand = func(_ string, arguments ...string) *exec.Cmd {
+		args = arguments
+		return exec.Command("echo")
+	}
+	t.Cleanup(func() { execCommand = exec.Command })
+
+	helperService := mocks.MockHelperService{}
+	helperService.On("GetConfigFilePath", constants.TalosConfigFile).Return("test")
+
+	err := TalosService{}.MoveNodeToSharedIp(&helperService, []string{"192.168.1.161"}, "192.168.1.184", "192.168.1.250", "")
+
+	assert.Nil(t, err)
+	assert.Equal(t, []string{
+		"patch", "machineconfig", "--nodes", "192.168.1.184", "--endpoints", "192.168.1.161", "--talosconfig=test",
+		"--patch", "apiVersion: v1alpha1\nkind: KubeClusterConfig\nendpoint: https://192.168.1.250:6443\n",
+	}, args)
+}
+
+func Test_MoveNodeToSharedIp_Fails_IfTalosctlFails(t *testing.T) {
+	execCommand = func(_ string, _ ...string) *exec.Cmd {
+		return exec.Command("sh", "-c", "echo unreachable >&2; exit 1")
+	}
+	t.Cleanup(func() { execCommand = exec.Command })
+
+	helperService := mocks.MockHelperService{}
+	helperService.On("GetConfigFilePath", constants.TalosConfigFile).Return("test")
+
+	err := TalosService{}.MoveNodeToSharedIp(&helperService, []string{"192.168.1.161"}, "192.168.1.184", "192.168.1.250", "")
+
+	assert.ErrorContains(t, err, "unreachable")
+}
+
+func Test_GetSharedIp_Succeeds(t *testing.T) {
+	configYaml := buildMultiDocYaml(t,
+		map[interface{}]interface{}{"foo": "bar"},
+		map[interface{}]interface{}{"kind": models.TalosLayer2VIPConfigKind, "name": "192.168.1.250", "link": "eth0"},
+	)
+
+	mockOs := mocks.MockOs{}
+	mockOs.On("ReadFile", mock.Anything).Return(configYaml, nil)
+	osReadFile = mockOs.ReadFile
+	t.Cleanup(func() { osReadFile = os.ReadFile })
+
+	helperService := mocks.MockHelperService{}
+	helperService.On("GetConfigDir").Return("test")
+
+	sharedIp, err := TalosService{}.GetSharedIp(&helperService)
+
+	assert.Nil(t, err)
+	assert.Equal(t, "192.168.1.250", sharedIp)
+}
+
+func Test_GetSharedIp_Succeeds_WithNothing_InAClusterFromAnEarlierBbe(t *testing.T) {
+	mockOs := mocks.MockOs{}
+	mockOs.On("ReadFile", mock.Anything).Return(buildMultiDocYaml(t, map[interface{}]interface{}{"foo": "bar"}), nil)
+	osReadFile = mockOs.ReadFile
+	t.Cleanup(func() { osReadFile = os.ReadFile })
+
+	helperService := mocks.MockHelperService{}
+	helperService.On("GetConfigDir").Return("test")
+
+	sharedIp, err := TalosService{}.GetSharedIp(&helperService)
+
+	assert.Nil(t, err)
+	assert.Equal(t, "", sharedIp)
+}
+
+func Test_ModifySharedIp_Succeeds_ReplacingTheLinkOfTheLastControlPlane(t *testing.T) {
+	configYaml := buildMultiDocYaml(t,
+		map[interface{}]interface{}{"foo": "bar"},
+		map[interface{}]interface{}{"apiVersion": "v1alpha1", "kind": models.TalosLayer2VIPConfigKind, "name": "192.168.1.250", "link": "eth0"},
+	)
+
+	mockOs := mocks.MockOs{}
+	mockOs.On("ReadFile", mock.Anything).Return(configYaml, nil)
+	mockOs.On("WriteFile", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	osReadFile = mockOs.ReadFile
+	osWriteFile = mockOs.WriteFile
+	t.Cleanup(func() {
+		osReadFile = os.ReadFile
+		osWriteFile = os.WriteFile
+	})
+
+	helperService := mocks.MockHelperService{}
+	helperService.On("GetConfigDir").Return("test")
+
+	err := TalosService{}.ModifySharedIp(&helperService, "192.168.1.250", "enp57s0u1u1")
+
+	assert.Nil(t, err)
+	mockOs.AssertCalled(t, "WriteFile", "test/"+constants.ControlplaneConfigFile, mock.Anything, mock.Anything)
+	documents := decodeWrittenDocuments(t, mockOs.Calls[1].Arguments[1].([]byte))
+	assert.Len(t, documents, 2)
+	assert.Equal(t, "bar", documents[0]["foo"])
+	assert.Equal(t, map[interface{}]interface{}{"apiVersion": "v1alpha1", "kind": models.TalosLayer2VIPConfigKind, "name": "192.168.1.250", "link": "enp57s0u1u1"}, documents[1])
+}
+
+func Test_ModifySharedIp_Succeeds_AddingTheAddress(t *testing.T) {
+	mockOs := mocks.MockOs{}
+	mockOs.On("ReadFile", mock.Anything).Return(buildMultiDocYaml(t, map[interface{}]interface{}{"foo": "bar"}), nil)
+	mockOs.On("WriteFile", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	osReadFile = mockOs.ReadFile
+	osWriteFile = mockOs.WriteFile
+	t.Cleanup(func() {
+		osReadFile = os.ReadFile
+		osWriteFile = os.WriteFile
+	})
+
+	helperService := mocks.MockHelperService{}
+	helperService.On("GetConfigDir").Return("test")
+
+	err := TalosService{}.ModifySharedIp(&helperService, "192.168.1.250", "eth0")
+
+	assert.Nil(t, err)
+	documents := decodeWrittenDocuments(t, mockOs.Calls[1].Arguments[1].([]byte))
+	assert.Equal(t, map[interface{}]interface{}{"apiVersion": "v1alpha1", "kind": models.TalosLayer2VIPConfigKind, "name": "192.168.1.250", "link": "eth0"}, documents[1])
+}
+
+func Test_ModifyClusterEndpoint_Succeeds_KeepingTheRest(t *testing.T) {
+	configYaml := buildMultiDocYaml(t,
+		map[interface{}]interface{}{"foo": "bar"},
+		map[interface{}]interface{}{"kind": models.TalosKubeClusterConfigKind, "clusterName": "modest-mega-man", "endpoint": "https://192.168.1.161:6443"},
+	)
+
+	mockOs := mocks.MockOs{}
+	mockOs.On("ReadFile", mock.Anything).Return(configYaml, nil)
+	mockOs.On("WriteFile", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	osReadFile = mockOs.ReadFile
+	osWriteFile = mockOs.WriteFile
+	t.Cleanup(func() {
+		osReadFile = os.ReadFile
+		osWriteFile = os.WriteFile
+	})
+
+	helperService := mocks.MockHelperService{}
+	helperService.On("GetConfigDir").Return("test")
+
+	err := TalosService{}.ModifyClusterEndpoint(&helperService, constants.WorkerConfigFile, "192.168.1.250")
+
+	assert.Nil(t, err)
+	mockOs.AssertCalled(t, "WriteFile", "test/"+constants.WorkerConfigFile, mock.Anything, mock.Anything)
+	documents := decodeWrittenDocuments(t, mockOs.Calls[1].Arguments[1].([]byte))
+	assert.Equal(t, "https://192.168.1.250:6443", documents[1]["endpoint"])
+	assert.Equal(t, "modest-mega-man", documents[1]["clusterName"])
+}
+
+func Test_ModifyClusterEndpoint_Fails_WithoutTheClusterDocument(t *testing.T) {
+	mockOs := mocks.MockOs{}
+	mockOs.On("ReadFile", mock.Anything).Return(buildMultiDocYaml(t, map[interface{}]interface{}{"foo": "bar"}), nil)
+	osReadFile = mockOs.ReadFile
+	t.Cleanup(func() { osReadFile = os.ReadFile })
+
+	helperService := mocks.MockHelperService{}
+	helperService.On("GetConfigDir").Return("test")
+
+	err := TalosService{}.ModifyClusterEndpoint(&helperService, constants.WorkerConfigFile, "192.168.1.250")
+
+	assert.ErrorContains(t, err, "KubeClusterConfig document not found")
 }

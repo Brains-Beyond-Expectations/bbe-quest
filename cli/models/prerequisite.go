@@ -25,7 +25,8 @@ type TalosPrerequisite struct {
 
 // How bbe reaches the cluster to check prerequisites and prepare its nodes
 type ClusterAccess struct {
-	KubeContext    string
-	ControlPlaneIp string
+	KubeContext string
+	// The control planes' own addresses, which talosctl moves between when one doesn't answer
+	TalosEndpoints []string
 	TalosConfig    string
 }
